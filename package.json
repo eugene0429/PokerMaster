@@ -1,0 +1,19 @@
+{
+  "name": "poker-master",
+  "version": "1.0.0",
+  "description": "LAN 텍사스 홀덤 연습 테이블 (최대 10인 + AI 봇)",
+  "type": "module",
+  "scripts": {
+    "start": "node server/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "socket.io": "^4.8.1"
+  },
+  "devDependencies": {
+    "socket.io-client": "^4.8.1",
+    "vitest": "^2.1.8"
+  }
+}

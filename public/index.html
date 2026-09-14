@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+<title>PokerMaster — 홀덤 연습 테이블</title>
+<link rel="stylesheet" href="css/style.css" />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>♠</text></svg>" />
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand"><span class="pip">♠</span><span class="brand-text">PokerMaster</span></div>
+    <div class="table-info">
+      <span class="info-chip" id="blindsLabel">—</span>
+      <span class="info-chip" id="handLabel">대기 중</span>
+      <span class="info-chip ghost" id="spectatorLabel" hidden></span>
+    </div>
+    <div class="topbar-actions">
+      <button class="icon-btn" id="btnFourColor" title="4색 덱">◆</button>
+      <button class="icon-btn" id="btnSound" title="소리">♪</button>
+      <button class="ghost-btn" id="btnSettings">설정</button>
+      <button class="ghost-btn" id="btnStand" hidden>일어서기</button>
+    </div>
+  </header>
+
+  <main class="stage">
+    <div class="table" id="table">
+      <div class="table-rail"></div>
+      <div class="table-felt">
+        <div class="felt-brand">POKER<em>MASTER</em></div>
+        <div class="pot" id="pot"></div>
+        <div class="board" id="board"></div>
+        <div class="table-status" id="tableStatus"></div>
+      </div>
+      <div class="layer" id="seats"></div>
+      <div class="layer" id="bets"></div>
+      <div class="layer fx" id="fx"></div>
+    </div>
+  </main>
+
+  <footer class="dock">
+    <div class="hero-strip" id="heroStrip"></div>
+    <div class="actions" id="actions"></div>
+  </footer>
+</div>
+
+<div class="modal-backdrop" id="joinModal">
+  <form class="modal" id="joinForm">
+    <h2>테이블에 앉기</h2>
+    <p class="modal-sub">이름을 정하고 빈 자리를 고르세요. 친구들은 같은 주소로 들어오면 됩니다.</p>
+    <label class="field">
+      <span>닉네임</span>
+      <input id="nameInput" maxlength="16" autocomplete="off" placeholder="예: 유진" required />
+    </label>
+    <button class="primary-btn" type="submit">입장</button>
+  </form>
+</div>
+
+<div class="modal-backdrop" id="settingsModal" hidden>
+  <form class="modal" id="settingsForm">
+    <h2>테이블 설정</h2>
+    <p class="modal-sub" id="settingsNote">호스트만 바꿀 수 있고, 핸드가 끝난 뒤에 적용됩니다.</p>
+    <div class="field-row">
+      <label class="field"><span>스몰 블라인드</span><input id="cfgSb" type="number" min="1" step="1" /></label>
+      <label class="field"><span>빅 블라인드</span><input id="cfgBb" type="number" min="2" step="1" /></label>
+    </div>
+    <div class="field-row">
+      <label class="field"><span>시작 스택</span><input id="cfgStack" type="number" min="100" step="100" /></label>
+      <label class="field"><span>제한 시간(초)</span><input id="cfgTurn" type="number" min="5" max="300" step="5" /></label>
+    </div>
+    <div class="bot-row">
+      <button class="ghost-btn" type="button" id="btnAddBot">봇 추가</button>
+      <span class="hint">빈 자리에 AI 한 명이 앉습니다</span>
+    </div>
+    <div class="modal-actions">
+      <button class="ghost-btn" type="button" id="btnCloseSettings">닫기</button>
+      <button class="primary-btn" type="submit">저장</button>
+    </div>
+  </form>
+</div>
+
+<div class="toasts" id="toasts"></div>
+<script src="/socket.io/socket.io.js"></script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

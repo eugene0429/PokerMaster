@@ -714,6 +714,154 @@ input[type=range]::-moz-range-thumb {
   to { opacity: 1; transform: none; }
 }
 
+
+/* ---------------------------- main menu -------------------------- */
+
+.menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  overflow-y: auto;
+  background:
+    radial-gradient(1000px 700px at 50% -5%, rgba(30, 110, 78, .30), transparent 62%),
+    rgba(6, 8, 11, .93);
+  backdrop-filter: blur(10px);
+}
+.menu-backdrop[hidden] { display: none; }
+
+.menu-card {
+  width: min(420px, 100%);
+  background: linear-gradient(180deg, #171d27, #0e121a);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 26px 24px 22px;
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.menu-head { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
+.menu-mark {
+  width: 54px;
+  height: 54px;
+  border-radius: 16px;
+  display: grid;
+  place-items: center;
+  font-size: 28px;
+  color: #0e1116;
+  background: linear-gradient(160deg, #f4d489, #d8b35e);
+  box-shadow: 0 10px 26px rgba(216, 179, 94, .28);
+}
+.menu-head h1 { margin: 4px 0 0; font-size: 22px; font-weight: 650; letter-spacing: -.01em; }
+.menu-tagline { margin: 0; font-size: 13px; line-height: 1.55; color: var(--muted); }
+
+.setup, .join-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, .035);
+  border: 1px solid var(--line);
+}
+.setup[hidden], .join-summary[hidden] { display: none; }
+
+.setup-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.setup-row.stack { flex-direction: column; align-items: stretch; gap: 8px; }
+.setup-label { font-size: 12px; color: var(--muted); }
+
+.stepper { display: flex; align-items: center; gap: 4px; }
+.stepper button {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, .05);
+  font-size: 17px;
+  line-height: 1;
+}
+.stepper button:hover:not(:disabled) { background: rgba(255, 255, 255, .12); }
+.stepper button:disabled { opacity: .3; cursor: default; }
+.stepper span {
+  min-width: 36px;
+  text-align: center;
+  font-size: 16px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.preset-row { display: flex; gap: 6px; }
+.preset {
+  flex: 1;
+  padding: 9px 4px;
+  border-radius: 9px;
+  font-size: 12px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, .04);
+  transition: background .15s, border-color .15s, color .15s;
+}
+.preset:hover { background: rgba(255, 255, 255, .1); }
+.preset.on { background: rgba(216, 179, 94, .18); border-color: rgba(216, 179, 94, .6); color: #f4d489; }
+
+.summary-row { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); }
+.summary-row strong { color: var(--ink); font-variant-numeric: tabular-nums; }
+
+.primary-btn.big { padding: 15px; font-size: 16px; border-radius: 13px; }
+.primary-btn:disabled { opacity: .4; cursor: default; filter: none; }
+
+.menu-foot { display: flex; gap: 8px; }
+.menu-foot .ghost-btn { flex: 1; padding: 10px; }
+
+/* ------------------------- invite dialog ------------------------- */
+
+#inviteModal { z-index: 140; }
+
+.qr-box {
+  align-self: center;
+  width: 208px;
+  height: 208px;
+  padding: 10px;
+  border-radius: 14px;
+  background: #fff;
+  display: grid;
+  place-items: center;
+}
+.qr-box[hidden] { display: none; }
+.qr-box svg { display: block; width: 100%; height: 100%; }
+
+.url-row { display: flex; gap: 8px; align-items: center; }
+.url-row code {
+  flex: 1;
+  min-width: 0;
+  padding: 11px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .05);
+  border: 1px solid var(--line);
+  font-size: 14px;
+  white-space: nowrap;
+  overflow-x: auto;
+}
+
+/* An empty seat is a place to drop a bot once you are already sitting. */
+.seat-empty.bot-slot {
+  border-style: solid;
+  border-color: rgba(216, 179, 94, .35);
+  color: rgba(244, 212, 137, .85);
+}
+.seat-empty.bot-slot:hover {
+  background: rgba(216, 179, 94, .16);
+  border-color: rgba(216, 179, 94, .75);
+  color: #fff;
+}
+
+.act-btn.dock-cta { flex: 0 0 auto; min-width: 156px; }
+
 /* --------------------------- responsive ------------------------- */
 
 @media (max-width: 860px) {
@@ -724,6 +872,12 @@ input[type=range]::-moz-range-thumb {
   .stage { padding: 6px; }
   .dock { padding: 8px 10px calc(8px + env(safe-area-inset-bottom)); }
   .act-btn { min-width: 72px; min-height: 52px; font-size: 14px; }
+  .act-btn.dock-cta { min-width: 120px; }
+  .menu-backdrop { padding: 14px; place-items: start center; }
+  .menu-card { padding: 20px 18px 18px; gap: 13px; }
+  .menu-mark { width: 46px; height: 46px; font-size: 24px; }
+  .menu-head h1 { font-size: 20px; }
+  .qr-box { width: 172px; height: 172px; }
   .raise-panel { flex-basis: 100%; order: -1; }
   .toasts { bottom: 150px; }
 }

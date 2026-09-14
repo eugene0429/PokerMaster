@@ -5,6 +5,7 @@ import {
 import { initAnim, flyChips, localCenter, percentToLocal, sparkle } from './anim.js';
 import { formatChips } from './chips.js';
 import { setFourColor } from './cards.js';
+import * as menu from './menu.js';
 import * as sound from './sound.js';
 
 const $ = (id) => document.getElementById(id);
@@ -17,7 +18,7 @@ const refs = {
 
 let snapshot = null;
 let net = null;
-let wantSeat = false;
+let invite = null;
 let raiseValue = null;
 let lastHandId = null;
 
@@ -26,44 +27,37 @@ let lastHandId = null;
 initAnim({ fx: refs.fx, table: refs.table });
 initRender(refs, {
   onSit: (seat) => net?.send('sit', { seat, name: savedName() }),
+  onAddBot: (seat) => net?.send('addBot', { seat }),
   onKickBot: (seat) => net?.send('removeBot', { seat }),
 });
+
+menu.initMenu({
+  onStart: (opts) => { saveName(opts.name); sound.unlock(); net?.send('startTable', opts); },
+  onJoin: ({ name }) => {
+    saveName(name);
+    sound.unlock();
+    const free = snapshot?.seats.findIndex((s) => s === null) ?? -1;
+    if (free < 0) return toast('빈 자리가 없습니다', 'error');
+    net?.send('sit', { seat: free, name });
+  },
+  onWatch: () => toast('관전 중입니다 — 빈 자리를 누르면 앉을 수 있습니다'),
+  onInvite: openInvite,
+});
+menu.setName(savedName());
 
 setFourColor(localStorage.getItem('pm-fourcolor') === '1');
 $('btnFourColor').classList.toggle('on', localStorage.getItem('pm-fourcolor') === '1');
 $('btnSound').classList.toggle('off', sound.isMuted());
 $('btnSound').textContent = sound.isMuted() ? '✕' : '♪';
 
-if (savedName()) {
-  $('joinModal').hidden = true;
-  start();
-} else {
-  $('nameInput').focus();
-}
-
-$('joinForm').addEventListener('submit', (e) => {
-  e.preventDefault();
-  const name = $('nameInput').value.trim();
-  if (!name) return;
-  saveName(name);
-  $('joinModal').hidden = true;
-  sound.unlock();
-  wantSeat = true;
-  start();
+net = connect({
+  onUpdate: handleUpdate,
+  onIdentity: (p) => { invite = p.invite ?? null; paintInvite(); },
+  onError: (message) => toast(message, 'error'),
+  onStatus: (s) => {
+    if (s === 'disconnected') toast('연결이 끊겼습니다 — 다시 연결하는 중…', 'error');
+  },
 });
-
-function start() {
-  net = connect({
-    onUpdate: handleUpdate,
-    onIdentity: (p) => { if (p.seat === null) wantSeat = wantSeat || !hasPlayed(); },
-    onError: (message) => toast(message, 'error'),
-    onStatus: (s) => {
-      if (s === 'disconnected') toast('연결이 끊겼습니다 — 다시 연결하는 중…', 'error');
-    },
-  });
-}
-
-function hasPlayed() { return localStorage.getItem('pm-played') === '1'; }
 
 /* ---------------------------- updates ----------------------------- */
 
@@ -81,18 +75,12 @@ function handleUpdate({ snapshot: next, events }) {
   paint(snapshot);
   renderDock(snapshot);
 
+  if (snapshot.you?.seated) menu.hide();
+  else menu.updateMenu(snapshot);
+
   if (!first) {
     runEffects(events, before);
     playSounds(events);
-  }
-
-  if (wantSeat && !snapshot.you?.seated) {
-    const free = snapshot.seats.findIndex((s) => s === null);
-    if (free >= 0) {
-      wantSeat = false;
-      localStorage.setItem('pm-played', '1');
-      net.send('sit', { seat: free, name: savedName() });
-    }
   }
 
   $('blindsLabel').textContent = `블라인드 ${formatChips(snapshot.config.sb)} / ${formatChips(snapshot.config.bb)}`;
@@ -175,10 +163,24 @@ function renderDock(s) {
     note.className = 'waiting-note';
     note.textContent = dockNote(s);
     refs.actions.appendChild(note);
+
+    // Never leave the player with nothing to press while the table is short.
+    if (needsPlayers(s) && s.you?.isHost) {
+      const add = document.createElement('button');
+      add.type = 'button';
+      add.className = 'act-btn check dock-cta';
+      add.innerHTML = '봇 추가<small>바로 시작하기</small>';
+      add.addEventListener('click', () => net?.send('addBot'));
+      refs.actions.appendChild(add);
+    }
     raiseValue = null;
     return;
   }
   renderActionButtons(s, toAct);
+}
+
+function needsPlayers(s) {
+  return s.you?.seated && s.seats.filter(Boolean).length < 2;
 }
 
 function addStrip(label, value, cls = '') {
@@ -191,6 +193,7 @@ function addStrip(label, value, cls = '') {
 function dockNote(s) {
   if (!s.you?.seated) return '빈 자리를 눌러 앉으세요 — 관전 중입니다';
   if (s.you.sittingOut) return '자리 비움 상태입니다';
+  if (needsPlayers(s)) return '혼자입니다 — 봇을 추가하거나 친구를 부르세요';
   if (s.phase === 'idle') return '플레이어가 2명 이상이면 시작합니다';
   if (s.phase === 'countdown') return '곧 시작합니다…';
   if (s.hand && !s.hand.complete) {
@@ -209,9 +212,7 @@ function renderActionButtons(s, act) {
   if (act.canCheck) {
     refs.actions.appendChild(button('check', '체크', '', () => send('check')));
   } else {
-    refs.actions.appendChild(
-      button('call', '콜', formatChips(act.toCall), () => send('call')),
-    );
+    refs.actions.appendChild(button('call', '콜', formatChips(act.toCall), () => send('call')));
   }
 
   if (!act.canRaise) return;
@@ -248,10 +249,7 @@ function renderActionButtons(s, act) {
 
   slider.addEventListener('input', () => { raiseValue = Number(slider.value); sync(); });
 
-  const presets = [
-    ['½팟', 0.5], ['⅔팟', 0.667], ['팟', 1], ['올인', null],
-  ];
-  for (const [label, fraction] of presets) {
+  for (const [label, fraction] of [['½팟', 0.5], ['⅔팟', 0.667], ['팟', 1], ['올인', null]]) {
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'quick-btn';
@@ -264,10 +262,8 @@ function renderActionButtons(s, act) {
     quick.appendChild(b);
   }
 
-  const raiseBtn = button(
-    'raise', act.isBet ? '벳' : '레이즈', formatChips(raiseValue),
-    () => send('raise', raiseValue),
-  );
+  const raiseBtn = button('raise', act.isBet ? '벳' : '레이즈', formatChips(raiseValue),
+    () => send('raise', raiseValue));
 
   panel.append(top, slider);
   refs.actions.append(panel, raiseBtn);
@@ -287,6 +283,38 @@ function send(type, amount) {
   raiseValue = null;
   net.send('action', { type, amount });
 }
+
+/* ----------------------------- invite ------------------------------ */
+
+function paintInvite() {
+  if (!invite) return;
+  $('inviteUrl').textContent = invite.primary;
+  $('inviteQr').innerHTML = invite.qr ?? '';
+  $('inviteQr').hidden = !invite.qr;
+  const others = invite.urls.slice(1);
+  $('inviteAlt').textContent = invite.hasLan
+    ? (others.length ? `안 되면 이 주소도 시도해 보세요: ${others.join(', ')}` : '')
+    : '이 컴퓨터가 네트워크에 연결되어 있지 않아 친구를 부를 주소를 찾지 못했습니다.';
+}
+
+function openInvite() {
+  paintInvite();
+  $('inviteModal').hidden = false;
+}
+
+$('btnInviteTop').addEventListener('click', openInvite);
+$('btnCloseInvite').addEventListener('click', () => { $('inviteModal').hidden = true; });
+$('inviteModal').addEventListener('click', (e) => {
+  if (e.target === $('inviteModal')) $('inviteModal').hidden = true;
+});
+$('btnCopyUrl').addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(invite?.primary ?? '');
+    toast('주소를 복사했습니다');
+  } catch {
+    toast('복사가 막혀 있습니다 — 주소를 길게 눌러 직접 복사해 주세요', 'error');
+  }
+});
 
 /* --------------------------- chrome & UI --------------------------- */
 
@@ -317,7 +345,10 @@ $('btnFourColor').addEventListener('click', () => {
   if (snapshot) paint(snapshot);
 });
 
-$('btnStand').addEventListener('click', () => net?.send('stand'));
+$('btnStand').addEventListener('click', () => {
+  net?.send('stand');
+  menu.reopen();
+});
 
 $('btnSettings').addEventListener('click', () => {
   if (!snapshot) return;

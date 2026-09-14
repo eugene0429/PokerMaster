@@ -18,6 +18,7 @@ const STREET_LABEL = {
 
 let refs = null;
 let onSit = () => {};
+let onAddBot = () => {};
 let onKickBot = () => {};
 
 // Decoration that lives between snapshots: what each seat last did, who won.
@@ -35,6 +36,7 @@ let timerKey = null;
 export function initRender(elements, handlers) {
   refs = elements;
   onSit = handlers.onSit;
+  onAddBot = handlers.onAddBot;
   onKickBot = handlers.onKickBot;
 }
 
@@ -165,7 +167,6 @@ function paintSeats(snapshot, tableRect) {
 }
 
 function renderEmptySeat(el, seat, snapshot) {
-  const canSit = !snapshot.you?.seated;
   if (el.dataset.mode !== 'empty') {
     el.dataset.mode = 'empty';
     el.className = 'seat empty';
@@ -173,12 +174,23 @@ function renderEmptySeat(el, seat, snapshot) {
     const btn = document.createElement('button');
     btn.className = 'seat-empty';
     btn.type = 'button';
-    btn.addEventListener('click', () => onSit(seat));
+    btn.addEventListener('click', () => {
+      if (btn.dataset.act === 'sit') onSit(seat);
+      else if (btn.dataset.act === 'bot') onAddBot(seat);
+    });
     el.appendChild(btn);
   }
+
+  // Sitting down comes first; once you are seated an empty seat is somewhere
+  // to drop a bot, which is what the host actually wants to do with it.
   const btn = el.firstElementChild;
-  btn.textContent = canSit ? '여기 앉기' : '빈 자리';
-  btn.disabled = !canSit;
+  const canSit = !snapshot.you?.seated;
+  const canBot = !canSit && !!snapshot.you?.isHost;
+
+  btn.dataset.act = canSit ? 'sit' : canBot ? 'bot' : '';
+  btn.textContent = canSit ? '여기 앉기' : canBot ? '+ 봇 추가' : '빈 자리';
+  btn.classList.toggle('bot-slot', canBot);
+  btn.disabled = !canSit && !canBot;
 }
 
 function renderOccupiedSeat(el, data, snapshot, tableRect, pos) {

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { MAX_SEATS, ACTION } from '../engine/constants.js';
 import { startHand, applyAction, legalActions, IllegalAction } from '../engine/table.js';
 import { decideBotAction, pickBotName, botThinkingTime } from './bots.js';
+import { makeProfileDealer } from './bot-profiles.js';
 import { snapshotFor } from './view.js';
 
 const DEFAULTS = {
@@ -35,6 +36,8 @@ export class Room {
     this.turnEndsAt = null;
     this.countdownEndsAt = null;
     this.timers = new Map();
+    this.nextProfile = makeProfileDealer();
+    this.invite = { urls: [], primary: '', qr: null, hasLan: false };
   }
 
   /* --------------------------- identity ---------------------------- */
@@ -65,6 +68,7 @@ export class Room {
 
     this.transport.send(socketId, 'identity', {
       token: player.token, name: player.name, seat: player.seat,
+      invite: this.invite,
     });
     this.publish();
     return player;
@@ -152,10 +156,10 @@ export class Room {
 
   sitDown(playerId, seat, name) {
     const player = this.players.get(playerId);
-    if (!player) throw new IllegalAction('unknown player');
-    if (player.seat !== null) throw new IllegalAction('already seated');
-    if (seat < 0 || seat >= this.config.maxSeats) throw new IllegalAction('no such seat');
-    if (this.playerAtSeat(seat)) throw new IllegalAction('seat is taken');
+    if (!player) throw new IllegalAction('알 수 없는 플레이어입니다');
+    if (player.seat !== null) throw new IllegalAction('이미 앉아 있습니다');
+    if (seat < 0 || seat >= this.config.maxSeats) throw new IllegalAction('그런 자리가 없습니다');
+    if (this.playerAtSeat(seat)) throw new IllegalAction('이미 누가 앉은 자리입니다');
 
     if (name) player.name = this.uniqueName(sanitizeName(name, player.name), player.id);
     player.seat = seat;
@@ -196,16 +200,22 @@ export class Room {
 
   /* ------------------------------ bots ----------------------------- */
 
-  addBot(playerId) {
-    if (!this.isHost(playerId)) throw new IllegalAction('only the host can add bots');
-    const seat = this.firstFreeSeat();
-    if (seat === null) throw new IllegalAction('the table is full');
+  addBot(playerId, seat = null) {
+    if (!this.isHost(playerId)) throw new IllegalAction('호스트만 봇을 추가할 수 있습니다');
+
+    const target = seat === null || seat === undefined ? this.firstFreeSeat() : Number(seat);
+    if (target === null) throw new IllegalAction('테이블이 꽉 찼습니다');
+    if (!Number.isInteger(target) || target < 0 || target >= this.config.maxSeats) {
+      throw new IllegalAction('그런 자리가 없습니다');
+    }
+    if (this.playerAtSeat(target)) throw new IllegalAction('이미 누가 앉은 자리입니다');
 
     const id = randomUUID();
     const taken = [...this.players.values()].map((p) => p.name);
     this.players.set(id, {
       id, token: randomUUID(), name: this.uniqueName(pickBotName(taken)),
-      seat, stack: this.config.startingStack, isBot: true,
+      seat: target, stack: this.config.startingStack, isBot: true,
+      profile: this.nextProfile(),
       connected: true, sittingOut: false, disconnectedAt: null,
     });
     this.maybeStartHand();
@@ -213,9 +223,9 @@ export class Room {
   }
 
   removeBot(playerId, seat) {
-    if (!this.isHost(playerId)) throw new IllegalAction('only the host can remove bots');
+    if (!this.isHost(playerId)) throw new IllegalAction('호스트만 봇을 내보낼 수 있습니다');
     const bot = this.playerAtSeat(seat);
-    if (!bot || !bot.isBot) throw new IllegalAction('no bot in that seat');
+    if (!bot || !bot.isBot) throw new IllegalAction('그 자리에는 봇이 없습니다');
     if (this.hand && !this.hand.complete && this.hand.players[seat] && !this.hand.players[seat].folded) {
       bot.leaveAfterHand = true;
       if (this.hand.currentSeat === seat) this.applyPlayerAction(bot, { type: ACTION.FOLD });
@@ -234,15 +244,41 @@ export class Room {
   /* ---------------------------- settings --------------------------- */
 
   updateConfig(playerId, patch) {
-    if (!this.isHost(playerId)) throw new IllegalAction('only the host can change the table');
-    if (this.hand && !this.hand.complete) throw new IllegalAction('wait for the hand to finish');
+    if (!this.isHost(playerId)) throw new IllegalAction('호스트만 테이블 설정을 바꿀 수 있습니다');
+    if (this.hand && !this.hand.complete) throw new IllegalAction('핸드가 끝난 뒤에 바꿀 수 있습니다');
+    this.applyConfig(patch);
+    this.publish();
+  }
 
+  applyConfig(patch = {}) {
     const bb = clampInt(patch.bb, 2, 1e9, this.config.bb);
     const sb = clampInt(patch.sb, 1, bb, Math.min(this.config.sb, bb));
     const startingStack = clampInt(patch.startingStack, bb * 5, 1e9, this.config.startingStack);
     const turnSeconds = clampInt(patch.turnSeconds, 5, 300, this.config.turnSeconds);
-
     this.config = { ...this.config, sb, bb, startingStack, turnSeconds };
+  }
+
+  /**
+   * The main menu's "게임 입장": settings, a seat and the bots in one step.
+   * Only works while the table is still empty, so two people pressing it at
+   * the same moment cannot both open a table — the server decides, not the UI.
+   */
+  startTable(playerId, opts = {}) {
+    const player = this.players.get(playerId);
+    if (!player) throw new IllegalAction('알 수 없는 플레이어입니다');
+    if (this.seatedPlayers().length > 0) throw new IllegalAction('이미 열린 테이블이 있습니다');
+
+    this.hostId = playerId;
+    this.applyConfig(opts);
+
+    const seat = Number.isInteger(opts.seat) ? opts.seat : 0;
+    this.sitDown(playerId, seat, opts.name);
+
+    const bots = clampInt(opts.bots, 0, this.config.maxSeats - 1, 0);
+    for (let i = 0; i < bots; i++) {
+      if (this.firstFreeSeat() === null) break;
+      this.addBot(playerId);
+    }
     this.publish();
   }
 
@@ -312,9 +348,9 @@ export class Room {
 
   act(playerId, action) {
     const player = this.players.get(playerId);
-    if (!player || player.seat === null) throw new IllegalAction('you are not seated');
-    if (!this.hand || this.hand.complete) throw new IllegalAction('no hand in progress');
-    if (this.hand.currentSeat !== player.seat) throw new IllegalAction('not your turn');
+    if (!player || player.seat === null) throw new IllegalAction('자리에 앉아 있지 않습니다');
+    if (!this.hand || this.hand.complete) throw new IllegalAction('진행 중인 핸드가 없습니다');
+    if (this.hand.currentSeat !== player.seat) throw new IllegalAction('아직 차례가 아닙니다');
     this.applyPlayerAction(player, action);
   }
 
@@ -360,9 +396,10 @@ export class Room {
   playBot(seat) {
     if (!this.hand || this.hand.complete || this.hand.currentSeat !== seat) return;
     const legal = legalActions(this.hand, seat);
+    const bot = this.playerAtSeat(seat);
     let action;
     try {
-      action = decideBotAction(this.hand, seat, legal);
+      action = decideBotAction(this.hand, seat, legal, { profile: bot?.profile });
     } catch {
       action = legal.canCheck ? { type: ACTION.CHECK } : { type: ACTION.FOLD };
     }

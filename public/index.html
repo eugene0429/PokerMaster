@@ -19,6 +19,7 @@
     <div class="topbar-actions">
       <button class="icon-btn" id="btnFourColor" title="4색 덱">◆</button>
       <button class="icon-btn" id="btnSound" title="소리">♪</button>
+      <button class="ghost-btn" id="btnInviteTop">친구 초대</button>
       <button class="ghost-btn" id="btnSettings">설정</button>
       <button class="ghost-btn" id="btnStand" hidden>일어서기</button>
     </div>
@@ -45,16 +46,63 @@
   </footer>
 </div>
 
-<div class="modal-backdrop" id="joinModal">
-  <form class="modal" id="joinForm">
-    <h2>테이블에 앉기</h2>
-    <p class="modal-sub">이름을 정하고 빈 자리를 고르세요. 친구들은 같은 주소로 들어오면 됩니다.</p>
+<div class="menu-backdrop" id="menu">
+  <div class="menu-card">
+    <div class="menu-head">
+      <div class="menu-mark">♠</div>
+      <h1>PokerMaster</h1>
+      <p class="menu-tagline" id="menuTagline">같은 와이파이에 있는 친구들과 하는 홀덤 연습 테이블</p>
+    </div>
+
     <label class="field">
       <span>닉네임</span>
-      <input id="nameInput" maxlength="16" autocomplete="off" placeholder="예: 유진" required />
+      <input id="menuName" maxlength="16" autocomplete="off" placeholder="예: 유진" />
     </label>
-    <button class="primary-btn" type="submit">입장</button>
-  </form>
+
+    <div class="setup" id="hostSetup">
+      <div class="setup-row">
+        <span class="setup-label">AI 봇</span>
+        <div class="stepper">
+          <button type="button" id="botMinus" aria-label="봇 줄이기">−</button>
+          <span id="botCount">4</span>
+          <button type="button" id="botPlus" aria-label="봇 늘리기">+</button>
+        </div>
+      </div>
+      <div class="setup-row stack">
+        <span class="setup-label">블라인드</span>
+        <div class="preset-row" id="blindPresets"></div>
+      </div>
+      <div class="setup-row stack">
+        <span class="setup-label">시작 스택</span>
+        <div class="preset-row" id="stackPresets"></div>
+      </div>
+    </div>
+
+    <div class="join-summary" id="joinSummary" hidden></div>
+
+    <button class="primary-btn big" id="menuEnter">게임 입장</button>
+
+    <div class="menu-foot">
+      <button class="ghost-btn" type="button" id="menuInvite">친구 초대</button>
+      <button class="ghost-btn" type="button" id="menuWatch">관전하기</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="inviteModal" hidden>
+  <div class="modal invite-modal">
+    <h2>친구 초대</h2>
+    <p class="modal-sub">같은 와이파이에 있는 친구가 아래 주소를 열거나, 폰 카메라로 QR을 찍으면 바로 들어옵니다.</p>
+    <div class="qr-box" id="inviteQr"></div>
+    <div class="url-row">
+      <code id="inviteUrl">—</code>
+      <button type="button" class="ghost-btn" id="btnCopyUrl">복사</button>
+    </div>
+    <p class="hint" id="inviteAlt"></p>
+    <div class="modal-actions">
+      <button type="button" class="ghost-btn" id="btnCloseInvite">닫기</button>
+    </div>
+  </div>
 </div>
 
 <div class="modal-backdrop" id="settingsModal" hidden>

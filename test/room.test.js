@@ -111,6 +111,16 @@ describe('dropping a bot into a chosen seat', () => {
   });
 });
 
+describe('what a seat says about itself', () => {
+  it('does not claim everyone is waiting when no hand is running', () => {
+    const room = makeRoom();
+    const host = room.join({ socketId: 's1', name: 'Host' });
+    room.startTable(host.id, { name: 'Host', seat: 0, bots: 2 });
+    const seats = snapshotFor(room, host.id).seats.filter(Boolean);
+    expect(seats.every((s) => s.waiting === false)).toBe(true);
+  });
+});
+
 describe('names at the table', () => {
   it('numbers a duplicate name so two people are told apart', () => {
     const room = makeRoom();

@@ -22,6 +22,10 @@
 
 * { box-sizing: border-box; }
 
+/* Any display rule of ours outranks the browser's [hidden] { display: none },
+   so state it once, loudly, instead of per component. */
+[hidden] { display: none !important; }
+
 html, body {
   margin: 0;
   height: 100%;
@@ -812,6 +816,8 @@ input[type=range]::-moz-range-thumb {
 .summary-row { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); }
 .summary-row strong { color: var(--ink); font-variant-numeric: tabular-nums; }
 
+.mode-blurb { margin: 2px 0 0; font-size: 11.5px; line-height: 1.5; color: var(--muted); }
+
 .primary-btn.big { padding: 15px; font-size: 16px; border-radius: 13px; }
 .primary-btn:disabled { opacity: .4; cursor: default; filter: none; }
 
@@ -862,6 +868,71 @@ input[type=range]::-moz-range-thumb {
 
 .act-btn.dock-cta { flex: 0 0 auto; min-width: 156px; }
 
+/* ------------------------- game clock chips ---------------------- */
+
+.info-chip.clock, .info-chip.blinds {
+  color: var(--ink);
+  background: rgba(255, 255, 255, .07);
+}
+.info-chip.blinds { color: var(--gold); }
+.info-chip.urgent { color: #ffb4ad; border-color: rgba(226, 84, 74, .5); }
+
+/* --------------------------- standings --------------------------- */
+
+#resultsModal { z-index: 150; }
+.results-modal { width: min(400px, 100%); }
+
+.standings { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.standing {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .04);
+  border: 1px solid var(--line);
+  font-size: 14px;
+}
+.standing .place {
+  width: 26px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+.standing .who { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.standing .chips { font-variant-numeric: tabular-nums; color: var(--muted); }
+.standing.winner {
+  background: linear-gradient(180deg, rgba(216, 179, 94, .22), rgba(216, 179, 94, .08));
+  border-color: rgba(216, 179, 94, .55);
+}
+.standing.winner .place, .standing.winner .chips { color: #f4d489; }
+.standing .bot-mark { font-size: 11px; color: var(--muted); }
+
+/* --------------------- seats that stopped playing ---------------- */
+
+.seat-state {
+  font-size: calc(var(--u) * .92);
+  letter-spacing: .02em;
+  color: #ffb4ad;
+}
+.seat-state:empty { display: none; }
+
+.kick-seat {
+  position: absolute;
+  top: calc(var(--u) * -.5);
+  right: calc(var(--u) * -.5);
+  width: calc(var(--u) * 1.7);
+  height: calc(var(--u) * 1.7);
+  border-radius: 50%;
+  font-size: calc(var(--u) * 1);
+  background: rgba(226, 84, 74, .85);
+  color: #fff;
+  display: none;
+  place-items: center;
+  z-index: 7;
+}
+.seat:hover .kick-seat.available { display: grid; }
+
 /* --------------------------- responsive ------------------------- */
 
 @media (max-width: 860px) {
@@ -878,6 +949,7 @@ input[type=range]::-moz-range-thumb {
   .menu-mark { width: 46px; height: 46px; font-size: 24px; }
   .menu-head h1 { font-size: 20px; }
   .qr-box { width: 172px; height: 172px; }
+  .standing { padding: 9px 10px; font-size: 13px; }
   .raise-panel { flex-basis: 100%; order: -1; }
   .toasts { bottom: 150px; }
 }
@@ -917,11 +989,12 @@ input[type=range]::-moz-range-thumb {
   .dealer-button { width: calc(var(--u) * 4); height: calc(var(--u) * 4); font-size: calc(var(--u) * 2.2); }
   .seat-empty { width: calc(var(--u) * 16); height: calc(var(--u) * 8); font-size: calc(var(--u) * 2.4); }
   .hand-name { font-size: calc(var(--u) * 2.1); }
+  .seat-state { font-size: calc(var(--u) * 2); }
 }
 
 /* Below ~520px the topbar cannot hold the wordmark and every chip at once. */
 @media (max-width: 520px) {
-  .brand-text, #handLabel, #spectatorLabel { display: none; }
+  .brand-text, #handLabel, #spectatorLabel, #levelLabel { display: none; }
   .info-chip { max-width: none; }
 }
 

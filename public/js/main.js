@@ -6,6 +6,7 @@ import { initAnim, flyChips, localCenter, percentToLocal, sparkle } from './anim
 import { formatChips } from './chips.js';
 import { setFourColor } from './cards.js';
 import * as menu from './menu.js';
+import { MODE_LABEL } from './menu.js';
 import * as sound from './sound.js';
 
 const $ = (id) => document.getElementById(id);
@@ -21,6 +22,8 @@ let net = null;
 let invite = null;
 let raiseValue = null;
 let lastHandId = null;
+let lastPhase = null;
+let resultsKey = null;
 
 /* ------------------------------ boot ------------------------------ */
 
@@ -28,7 +31,7 @@ initAnim({ fx: refs.fx, table: refs.table });
 initRender(refs, {
   onSit: (seat) => net?.send('sit', { seat, name: savedName() }),
   onAddBot: (seat) => net?.send('addBot', { seat }),
-  onKickBot: (seat) => net?.send('removeBot', { seat }),
+  onKick: (seat) => net?.send('kick', { seat }),
 });
 
 menu.initMenu({
@@ -83,7 +86,11 @@ function handleUpdate({ snapshot: next, events }) {
     playSounds(events);
   }
 
-  $('blindsLabel').textContent = `블라인드 ${formatChips(snapshot.config.sb)} / ${formatChips(snapshot.config.bb)}`;
+  paintClock();
+  paintResults(snapshot);
+  if (lastPhase === 'finished' && snapshot.phase !== 'finished' && !snapshot.you?.seated) menu.reopen();
+  lastPhase = snapshot.phase;
+
   $('handLabel').textContent = snapshot.hand ? `#${snapshot.hand.handId} 핸드` : '대기 중';
   $('btnStand').hidden = !snapshot.you?.seated;
 
@@ -180,7 +187,7 @@ function renderDock(s) {
 }
 
 function needsPlayers(s) {
-  return s.you?.seated && s.seats.filter(Boolean).length < 2;
+  return s.you?.seated && !s.game?.finished && s.seats.filter(Boolean).length < 2;
 }
 
 function addStrip(label, value, cls = '') {
@@ -191,6 +198,7 @@ function addStrip(label, value, cls = '') {
 }
 
 function dockNote(s) {
+  if (s.game?.finished) return '게임이 끝났습니다';
   if (!s.you?.seated) return '빈 자리를 눌러 앉으세요 — 관전 중입니다';
   if (s.you.sittingOut) return '자리 비움 상태입니다';
   if (needsPlayers(s)) return '혼자입니다 — 봇을 추가하거나 친구를 부르세요';
@@ -284,6 +292,104 @@ function send(type, amount) {
   net.send('action', { type, amount });
 }
 
+/* --------------------------- game clock ---------------------------- */
+
+function mmss(ms) {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const sec = total % 60;
+  const pad = (n) => String(n).padStart(2, '0');
+  return h > 0 ? `${h}:${pad(m)}:${pad(sec)}` : `${pad(m)}:${pad(sec)}`;
+}
+
+/**
+ * The server sends reference timestamps, not a countdown — a tab that sleeps
+ * would drift if the client counted the seconds itself.
+ */
+function paintClock() {
+  const game = snapshot?.game;
+  if (!game) return;
+
+  const clock = $('clockLabel');
+  clock.hidden = !game.startedAt;
+  if (game.startedAt) clock.textContent = mmss(Date.now() - game.startedAt);
+
+  // The level prefix only means something once a game is actually running.
+  $('blindsLabel').textContent = game.rising && game.startedAt
+    ? `L${game.level + 1} · ${formatChips(game.blinds.sb)} / ${formatChips(game.blinds.bb)}`
+    : `블라인드 ${formatChips(game.blinds.sb)} / ${formatChips(game.blinds.bb)}`;
+
+  const level = $('levelLabel');
+  let text = null;
+  let urgent = false;
+
+  if (game.mode === 'timed' && game.endsAt) {
+    const left = game.endsAt - Date.now();
+    text = left > 0 ? `종료까지 ${mmss(left)}` : '마지막 핸드';
+    urgent = left > 0 && left < 60_000;
+  } else if (game.rising && game.levelEndsAt && game.nextBlinds) {
+    const left = game.levelEndsAt - Date.now();
+    text = left > 0
+      ? `다음 ${formatChips(game.nextBlinds.sb)}/${formatChips(game.nextBlinds.bb)} · ${mmss(left)}`
+      : '다음 핸드부터 블라인드 상승';
+    urgent = left > 0 && left < 60_000;
+  }
+
+  level.hidden = text === null;
+  if (text !== null) level.textContent = text;
+  level.classList.toggle('urgent', urgent);
+}
+
+setInterval(paintClock, 1000);
+
+/* ---------------------------- standings ---------------------------- */
+
+function paintResults(s) {
+  const results = s.game?.finished ? s.game.results : null;
+  if (!results) { $('resultsModal').hidden = true; resultsKey = null; return; }
+
+  // Render once; if the player closes it, a later snapshot must not reopen it.
+  const key = `${results.reason}:${results.standings.length}:${results.durationMs}`;
+  if (resultsKey === key) return;
+  resultsKey = key;
+
+  $('resultsTitle').textContent = results.standings[0]
+    ? `${results.standings[0].name} 우승`
+    : '게임 종료';
+  $('resultsSub').textContent =
+    `${MODE_LABEL[s.game.mode]} · ${results.reason} · ${results.hands}핸드 · ${mmss(results.durationMs)}`;
+
+  $('standings').innerHTML = '';
+  for (const row of results.standings) {
+    const li = document.createElement('li');
+    li.className = `standing ${row.place === 1 ? 'winner' : ''}`;
+    li.innerHTML = `
+      <span class="place">${row.place}</span>
+      <span class="who">${escapeHtml(row.name)}${row.isBot ? ' <span class="bot-mark">BOT</span>' : ''}</span>
+      <span class="chips">${row.stack > 0 ? formatChips(row.stack) : '탈락'}</span>`;
+    $('standings').appendChild(li);
+  }
+
+  const host = !!s.you?.isHost;
+  $('btnNewGame').disabled = !host;
+  $('btnNewGame').textContent = host ? '새 게임' : '호스트를 기다리는 중';
+  $('resultsModal').hidden = false;
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+$('btnCloseResults').addEventListener('click', () => { $('resultsModal').hidden = true; });
+$('btnNewGame').addEventListener('click', () => {
+  net?.send('reset');
+  $('resultsModal').hidden = true;
+  menu.reopen();
+});
+
 /* ----------------------------- invite ------------------------------ */
 
 function paintInvite() {
@@ -357,11 +463,21 @@ $('btnSettings').addEventListener('click', () => {
   $('cfgStack').value = snapshot.config.startingStack;
   $('cfgTurn').value = snapshot.config.turnSeconds;
   const host = !!snapshot.you?.isHost;
-  for (const input of ['cfgSb', 'cfgBb', 'cfgStack', 'cfgTurn']) $(input).disabled = !host;
-  $('btnAddBot').disabled = !host;
-  $('settingsNote').textContent = host
-    ? '핸드가 끝난 뒤에 적용됩니다.'
-    : '호스트만 설정을 바꿀 수 있습니다.';
+  const rising = !!snapshot.game?.rising;
+  const started = !!snapshot.game?.startedAt;
+  const lockedTable = snapshot.game?.mode === 'tournament' && started;
+
+  for (const input of ['cfgStack', 'cfgTurn']) $(input).disabled = !host;
+  // Blinds are on a clock in tournament and timed games; editing them by hand
+  // would fight the level that is about to be applied.
+  for (const input of ['cfgSb', 'cfgBb']) $(input).disabled = !host || rising;
+  $('btnAddBot').disabled = !host || lockedTable;
+
+  $('settingsNote').textContent = !host
+    ? '호스트만 설정을 바꿀 수 있습니다.'
+    : rising
+      ? '블라인드는 레벨에 따라 자동으로 오릅니다. 나머지는 핸드가 끝난 뒤에 적용됩니다.'
+      : '핸드가 끝난 뒤에 적용됩니다.';
   $('settingsModal').hidden = false;
 });
 
@@ -374,12 +490,15 @@ $('btnAddBot').addEventListener('click', () => net?.send('addBot'));
 
 $('settingsForm').addEventListener('submit', (e) => {
   e.preventDefault();
-  net?.send('config', {
-    sb: Number($('cfgSb').value),
-    bb: Number($('cfgBb').value),
+  const patch = {
     startingStack: Number($('cfgStack').value),
     turnSeconds: Number($('cfgTurn').value),
-  });
+  };
+  if (!snapshot?.game?.rising) {
+    patch.sb = Number($('cfgSb').value);
+    patch.bb = Number($('cfgBb').value);
+  }
+  net?.send('config', patch);
   $('settingsModal').hidden = true;
 });
 

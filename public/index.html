@@ -12,7 +12,9 @@
   <header class="topbar">
     <div class="brand"><span class="pip">♠</span><span class="brand-text">PokerMaster</span></div>
     <div class="table-info">
-      <span class="info-chip" id="blindsLabel">—</span>
+      <span class="info-chip clock" id="clockLabel" hidden>00:00</span>
+      <span class="info-chip blinds" id="blindsLabel">—</span>
+      <span class="info-chip" id="levelLabel" hidden></span>
       <span class="info-chip" id="handLabel">대기 중</span>
       <span class="info-chip ghost" id="spectatorLabel" hidden></span>
     </div>
@@ -60,6 +62,19 @@
     </label>
 
     <div class="setup" id="hostSetup">
+      <div class="setup-row stack">
+        <span class="setup-label">게임 방식</span>
+        <div class="preset-row" id="modePresets"></div>
+        <p class="mode-blurb" id="modeBlurb"></p>
+      </div>
+      <div class="setup-row stack" id="levelRow">
+        <span class="setup-label">블라인드 상승</span>
+        <div class="preset-row" id="levelPresets"></div>
+      </div>
+      <div class="setup-row stack" id="totalRow" hidden>
+        <span class="setup-label">총 시간</span>
+        <div class="preset-row" id="totalPresets"></div>
+      </div>
       <div class="setup-row">
         <span class="setup-label">AI 봇</span>
         <div class="stepper">
@@ -126,6 +141,18 @@
       <button class="primary-btn" type="submit">저장</button>
     </div>
   </form>
+</div>
+
+<div class="modal-backdrop" id="resultsModal" hidden>
+  <div class="modal results-modal">
+    <h2 id="resultsTitle">게임 종료</h2>
+    <p class="modal-sub" id="resultsSub"></p>
+    <ol class="standings" id="standings"></ol>
+    <div class="modal-actions">
+      <button type="button" class="ghost-btn" id="btnCloseResults">닫기</button>
+      <button type="button" class="primary-btn" id="btnNewGame">새 게임</button>
+    </div>
+  </div>
 </div>
 
 <div class="toasts" id="toasts"></div>

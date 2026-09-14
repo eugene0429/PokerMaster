@@ -1,4 +1,5 @@
 import { legalActions } from '../engine/table.js';
+import { blindsForLevel, MAX_LEVEL, RISING_BLINDS } from './blinds.js';
 
 /**
  * Build the one view of the table that this player is allowed to see.
@@ -26,6 +27,8 @@ export function snapshotFor(room, playerId) {
       sittingOut: pl.sittingOut,
       stack: hp ? hp.stack : pl.stack,
       inHand: !!hp,
+      // Sat down mid-hand: dealt in from the next one. Not a state between hands.
+      waiting: !!hand && !hand.complete && !hp && !pl.sittingOut,
       folded: hp?.folded ?? false,
       allIn: hp?.allIn ?? false,
       committed: hp?.streetCommitted ?? 0,
@@ -65,6 +68,31 @@ export function snapshotFor(room, playerId) {
     deadline: room.turnEndsAt,
     countdownEndsAt: room.countdownEndsAt,
     spectators: room.spectatorNames(),
+    game: gameState(room),
+  };
+}
+
+/** The blind clock, the game clock, and how it ends. */
+function gameState(room) {
+  const rising = RISING_BLINDS.has(room.config.mode);
+  return {
+    mode: room.config.mode,
+    level: room.level,
+    maxLevel: MAX_LEVEL,
+    rising,
+    blinds: { sb: room.config.sb, bb: room.config.bb },
+    nextBlinds: rising && room.level < MAX_LEVEL
+      ? blindsForLevel(room.baseBlinds, room.level + 1)
+      : null,
+    levelMinutes: room.config.levelMinutes,
+    totalMinutes: room.config.totalMinutes,
+    startedAt: room.startedAt,
+    levelEndsAt: room.levelEndsAt,
+    endsAt: room.endsAt,
+    finished: room.finished,
+    results: room.results,
+    playersLeft: room.seatedPlayers().filter((p) => p.stack > 0).length,
+    eliminated: room.eliminated.length,
   };
 }
 

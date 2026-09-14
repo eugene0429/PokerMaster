@@ -19,7 +19,7 @@ const STREET_LABEL = {
 let refs = null;
 let onSit = () => {};
 let onAddBot = () => {};
-let onKickBot = () => {};
+let onKick = () => {};
 
 // Decoration that lives between snapshots: what each seat last did, who won.
 const decor = {
@@ -37,7 +37,7 @@ export function initRender(elements, handlers) {
   refs = elements;
   onSit = handlers.onSit;
   onAddBot = handlers.onAddBot;
-  onKickBot = handlers.onKickBot;
+  onKick = handlers.onKick;
 }
 
 export function resetDecor() {
@@ -201,14 +201,15 @@ function renderOccupiedSeat(el, data, snapshot, tableRect, pos) {
       <div class="seat-plate">
         <div class="seat-name"></div>
         <div class="seat-stack"></div>
+        <div class="seat-state"></div>
         <div class="timer-bar" hidden></div>
       </div>`;
     const kick = document.createElement('button');
-    kick.className = 'kick-bot';
+    kick.className = 'kick-seat';
     kick.type = 'button';
     kick.textContent = '×';
-    kick.title = '봇 내보내기';
-    kick.addEventListener('click', () => onKickBot(data.seat));
+    kick.title = '이 자리 비우기';
+    kick.addEventListener('click', () => onKick(data.seat));
     el.appendChild(kick);
   }
 
@@ -226,12 +227,23 @@ function renderOccupiedSeat(el, data, snapshot, tableRect, pos) {
   el.querySelector('.seat-name').textContent = data.name;
   el.querySelector('.seat-stack').textContent =
     data.stack > 0 ? formatChips(data.stack) : (data.inHand ? 'ALL IN' : '—');
-  el.querySelector('.kick-bot').hidden = !(data.isBot && snapshot.you?.isHost);
+  el.querySelector('.seat-state').textContent = seatState(data);
+
+  // The host can clear any seat — a bot, or a friend who stopped answering.
+  const kick = el.querySelector('.kick-seat');
+  kick.classList.toggle('available', !!snapshot.you?.isHost && !data.isMe);
 
   paintSeatCards(el.querySelector('.seat-cards'), data, snapshot, tableRect, pos);
   paintSeatTag(el, data);
   paintDealerButton(el, data);
   paintHandName(el, data, snapshot);
+}
+
+function seatState(data) {
+  if (!data.connected) return '연결 끊김';
+  if (data.sittingOut) return '자리 비움';
+  if (data.waiting) return '다음 핸드 대기';
+  return '';
 }
 
 function paintSeatCards(box, data, snapshot, tableRect, pos) {

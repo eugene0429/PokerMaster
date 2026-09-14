@@ -45,14 +45,14 @@ export class Room {
     if (player) {
       player.connected = true;
       player.disconnectedAt = null;
-      if (name) player.name = sanitizeName(name, player.name);
+      if (name) player.name = this.uniqueName(sanitizeName(name, player.name), player.id);
       this.clearTimer(`drop:${player.id}`);
     } else {
       const id = randomUUID();
       const newToken = randomUUID();
       player = {
         id, token: newToken,
-        name: sanitizeName(name, `Player`),
+        name: this.uniqueName(sanitizeName(name, 'Player')),
         seat: null, stack: 0, isBot: false,
         connected: true, sittingOut: false, disconnectedAt: null,
       };
@@ -117,6 +117,24 @@ export class Room {
     return this.sockets.get(socketId) ?? null;
   }
 
+  /**
+   * Two friends both called 민준 are indistinguishable at the table, so the
+   * second one becomes "민준 2". Reconnecting players pass their own id and
+   * keep the name they already had.
+   */
+  uniqueName(name, excludeId = null) {
+    const taken = new Set();
+    for (const p of this.players.values()) if (p.id !== excludeId) taken.add(p.name);
+    if (!taken.has(name)) return name;
+
+    const base = name.slice(0, 13).trimEnd() || 'Player';
+    for (let n = 2; n < 100; n++) {
+      const candidate = `${base} ${n}`;
+      if (!taken.has(candidate)) return candidate;
+    }
+    return `${base} ${Date.now() % 1000}`;
+  }
+
   /* ---------------------------- seating ---------------------------- */
 
   playerAtSeat(seat) {
@@ -139,7 +157,7 @@ export class Room {
     if (seat < 0 || seat >= this.config.maxSeats) throw new IllegalAction('no such seat');
     if (this.playerAtSeat(seat)) throw new IllegalAction('seat is taken');
 
-    if (name) player.name = sanitizeName(name, player.name);
+    if (name) player.name = this.uniqueName(sanitizeName(name, player.name), player.id);
     player.seat = seat;
     player.stack = this.config.startingStack;
     player.sittingOut = false;
@@ -186,7 +204,7 @@ export class Room {
     const id = randomUUID();
     const taken = [...this.players.values()].map((p) => p.name);
     this.players.set(id, {
-      id, token: randomUUID(), name: pickBotName(taken),
+      id, token: randomUUID(), name: this.uniqueName(pickBotName(taken)),
       seat, stack: this.config.startingStack, isBot: true,
       connected: true, sittingOut: false, disconnectedAt: null,
     });
@@ -396,6 +414,12 @@ export class Room {
   clearTimer(key) {
     const t = this.timers.get(key);
     if (t) { clearTimeout(t); this.timers.delete(key); }
+  }
+
+  /** Drop every pending timer so the room stops holding the process open. */
+  dispose() {
+    for (const t of this.timers.values()) clearTimeout(t);
+    this.timers.clear();
   }
 
   seatOf(playerId) {

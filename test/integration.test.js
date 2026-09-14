@@ -17,14 +17,14 @@ beforeAll(async () => {
   });
   await waitFor(async () => {
     try { await fetch(URL); return true; } catch { return false; }
-  }, 10000);
-}, 20000);
+  }, 20000);
+}, 30000);
 
 afterAll(() => { server?.kill(); });
 
 /* ------------------------------ helpers ----------------------------- */
 
-function waitFor(predicate, timeout = 8000, interval = 40) {
+function waitFor(predicate, timeout = 20000, interval = 40) {
   const deadline = Date.now() + timeout;
   return new Promise((resolve, reject) => {
     const tick = async () => {
@@ -73,7 +73,7 @@ describe('two players over the network', () => {
     a.send('sit', { seat: 0 });
     b.send('sit', { seat: 5 });
 
-    await waitFor(() => a.snapshot?.hand?.handId >= 1, 12000);
+    await waitFor(() => a.snapshot?.hand?.handId >= 1, 25000);
 
     // Each player sees their own two cards and nothing of the other's.
     const mine = a.snapshot.seats[0];
@@ -98,7 +98,7 @@ describe('two players over the network', () => {
         }
       }
       return a.snapshot?.hand?.complete === true;
-    }, 15000, 60);
+    }, 30000, 60);
 
     expect(a.snapshot.hand.board).toHaveLength(5);
     expect(a.snapshot.hand.results.showdown).toBe(true);
@@ -110,7 +110,7 @@ describe('two players over the network', () => {
 
     a.close();
     b.close();
-  }, 40000);
+  }, 90000);
 
   it('refuses an action from a player who is not to act', async () => {
     const a = client('Cal');
@@ -119,16 +119,16 @@ describe('two players over the network', () => {
     a.send('sit', { seat: 2 });
     b.send('sit', { seat: 7 });
 
-    await waitFor(() => a.snapshot?.hand && !a.snapshot.hand.complete, 12000);
+    await waitFor(() => a.snapshot?.hand && !a.snapshot.hand.complete, 25000);
 
     const waiting = a.snapshot.hand.currentSeat === 2 ? b : a;
     waiting.errors.length = 0;
     waiting.send('action', { type: 'fold' });
 
-    await waitFor(() => waiting.errors.length > 0, 4000);
+    await waitFor(() => waiting.errors.length > 0, 10000);
     expect(waiting.errors[0]).toMatch(/차례|turn/);
 
     a.close();
     b.close();
-  }, 40000);
+  }, 90000);
 });

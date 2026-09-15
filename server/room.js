@@ -12,10 +12,20 @@ const DEFAULTS = {
   bb: 100,
   startingStack: 10000,
   turnSeconds: 30,
-  mode: MODE.CASH,
+  // Must match the option the main menu shows pre-selected. When they differed,
+  // a client that omitted `mode` silently opened a cash game while its own UI
+  // said tournament, and the blinds never rose.
+  mode: MODE.TOURNAMENT,
   levelMinutes: 10,
   totalMinutes: 60,
 };
+
+/**
+ * Identifies this server process. A page left open across a restart is running
+ * the old client, which is how a table once opened in the wrong mode: the stale
+ * script never sent one, and the server quietly fell back to its default.
+ */
+const BUILD_ID = `${Date.now()}`;
 
 const COUNTDOWN_MS = 3000;
 const SETTLE_MS = 5000;
@@ -82,6 +92,7 @@ export class Room {
     this.transport.send(socketId, 'identity', {
       token: player.token, name: player.name, seat: player.seat,
       invite: this.invite,
+      build: BUILD_ID,
     });
     this.publish();
     return player;

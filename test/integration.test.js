@@ -1,18 +1,22 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { io } from 'socket.io-client';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const PORT = 3599;
-const URL = `http://127.0.0.1:${PORT}`;
 
+// A server process per test. One room lives for the life of the process, so
+// sharing it between tests would leak a finished or locked table into the next.
+let nextPort = 3600;
 let server;
+let URL;
 
-beforeAll(async () => {
+beforeEach(async () => {
+  const port = nextPort++;
+  URL = `http://127.0.0.1:${port}`;
   server = spawn('node', [path.join(ROOT, 'server', 'index.js')], {
-    env: { ...process.env, PORT: String(PORT) },
+    env: { ...process.env, PORT: String(port) },
     stdio: 'ignore',
   });
   await waitFor(async () => {
@@ -20,7 +24,7 @@ beforeAll(async () => {
   }, 20000);
 }, 30000);
 
-afterAll(() => { server?.kill(); });
+afterEach(() => { server?.kill(); });
 
 /* ------------------------------ helpers ----------------------------- */
 
@@ -53,6 +57,20 @@ function client(name) {
   return c;
 }
 
+/** Two humans at a cash table, the way the main menu would open one. */
+async function twoPlayerTable(hostName, guestName, hostSeat = 0, guestSeat = 5) {
+  const host = client(hostName);
+  const guest = client(guestName);
+  await Promise.all([host.ready, guest.ready]);
+
+  host.send('startTable', { name: hostName, seat: hostSeat, bots: 0, mode: 'cash' });
+  await waitFor(() => host.snapshot?.seats[hostSeat] !== null);
+  guest.send('sit', { seat: guestSeat, name: guestName });
+  await waitFor(() => host.snapshot?.seats[guestSeat] !== null);
+
+  return { host, guest };
+}
+
 /** Every chip on the table: in stacks, bet in front, or sitting in the pot. */
 function totalChips(snapshot) {
   const seats = snapshot.seats.filter(Boolean);
@@ -66,26 +84,17 @@ function totalChips(snapshot) {
 
 describe('two players over the network', () => {
   it('deals a hand, hides the other hand, and plays it to the end', async () => {
-    const a = client('Ann');
-    const b = client('Ben');
-    await Promise.all([a.ready, b.ready]);
-
-    a.send('sit', { seat: 0 });
-    b.send('sit', { seat: 5 });
+    const { host: a, guest: b } = await twoPlayerTable('Ann', 'Ben');
 
     await waitFor(() => a.snapshot?.hand?.handId >= 1, 25000);
 
     // Each player sees their own two cards and nothing of the other's.
-    const mine = a.snapshot.seats[0];
-    const theirs = a.snapshot.seats[5];
-    expect(mine.cards).toHaveLength(2);
-    expect(theirs.cardCount).toBe(2);
-    expect(theirs.cards).toBeNull();
+    expect(a.snapshot.seats[0].cards).toHaveLength(2);
+    expect(a.snapshot.seats[5].cardCount).toBe(2);
+    expect(a.snapshot.seats[5].cards).toBeNull();
 
     // Nor does the event stream carry them.
-    const leaked = a.events.filter((e) => e.type === 'holeCards' && e.seat !== 0);
-    expect(leaked).toEqual([]);
-
+    expect(a.events.filter((e) => e.type === 'holeCards' && e.seat !== 0)).toEqual([]);
     expect(totalChips(a.snapshot)).toBe(20000);
 
     // Play it out: whoever is to act checks or calls until the hand is over.
@@ -113,11 +122,7 @@ describe('two players over the network', () => {
   }, 90000);
 
   it('refuses an action from a player who is not to act', async () => {
-    const a = client('Cal');
-    const b = client('Dee');
-    await Promise.all([a.ready, b.ready]);
-    a.send('sit', { seat: 2 });
-    b.send('sit', { seat: 7 });
+    const { host: a, guest: b } = await twoPlayerTable('Cal', 'Dee', 2, 7);
 
     await waitFor(() => a.snapshot?.hand && !a.snapshot.hand.complete, 25000);
 
@@ -130,5 +135,28 @@ describe('two players over the network', () => {
 
     a.close();
     b.close();
+  }, 90000);
+
+  it('locks a started tournament so a latecomer can only watch', async () => {
+    const host = client('Eve');
+    const watcher = client('Fin');
+    await Promise.all([host.ready, watcher.ready]);
+
+    host.send('startTable', {
+      name: 'Eve', seat: 0, bots: 2, mode: 'tournament', levelMinutes: 10,
+    });
+    await waitFor(() => host.snapshot?.game?.startedAt !== null, 25000);
+
+    watcher.errors.length = 0;
+    watcher.send('sit', { seat: 8 });
+    await waitFor(() => watcher.errors.length > 0, 10000);
+    expect(watcher.errors[0]).toMatch(/토너먼트/);
+
+    // Watching still works — the snapshot keeps flowing.
+    expect(watcher.snapshot.seats.filter(Boolean).length).toBe(3);
+    expect(watcher.snapshot.game.mode).toBe('tournament');
+
+    host.close();
+    watcher.close();
   }, 90000);
 });

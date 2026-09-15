@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { startHand, applyAction, legalActions } from '../engine/table.js';
 import { decideBotAction, preflopStrength, lateness } from '../server/bots.js';
 import { PROFILE_BY_KEY, PROFILES, makeProfileDealer } from '../server/bot-profiles.js';
-import { parseCards } from '../engine/deck.js';
+import { parseCards, createDeck, shuffle } from '../engine/deck.js';
 import { ACTION } from '../engine/constants.js';
 
 const BLINDS = { sb: 50, bb: 100 };
@@ -21,14 +21,20 @@ function seeded(seed) {
 const seats = (n, stack = 10000) =>
   Array.from({ length: n }, (_, i) => ({ seat: i, id: `p${i}`, name: `P${i}`, stack }));
 
-/** What does this profile do in a fresh preflop spot, over and over? */
-function preflopMix(profileKey, samples = 400, seed = 7) {
+/**
+ * What does this profile do in a fresh preflop spot, over and over?
+ * The deck is seeded too — with a random deck the measured rates move by a
+ * percentage point between runs, which is enough to flake a threshold.
+ */
+function preflopMix(profileKey, samples = 600, seed = 7) {
   const rand = seeded(seed);
+  const deal = seeded(seed ^ 0x9e37);
   const profile = PROFILE_BY_KEY[profileKey];
   const counts = { fold: 0, call: 0, raise: 0, check: 0 };
 
   for (let i = 0; i < samples; i++) {
-    const { state } = startHand({ seats: seats(6), buttonSeat: 0, blinds: BLINDS });
+    const deck = shuffle(createDeck(), (n) => Math.floor(deal() * n));
+    const { state } = startHand({ seats: seats(6), buttonSeat: 0, blinds: BLINDS, deck });
     const seat = state.currentSeat;
     const legal = legalActions(state, seat);
     const action = decideBotAction(state, seat, legal, { profile, rand });

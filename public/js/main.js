@@ -472,6 +472,8 @@ $('btnSettings').addEventListener('click', () => {
   // would fight the level that is about to be applied.
   for (const input of ['cfgSb', 'cfgBb']) $(input).disabled = !host || rising;
   $('btnAddBot').disabled = !host || lockedTable;
+  $('btnEndGame').disabled = !host;
+  disarmEndGame();
 
   $('settingsNote').textContent = !host
     ? '호스트만 설정을 바꿀 수 있습니다.'
@@ -481,12 +483,41 @@ $('btnSettings').addEventListener('click', () => {
   $('settingsModal').hidden = false;
 });
 
-$('btnCloseSettings').addEventListener('click', () => { $('settingsModal').hidden = true; });
+$('btnCloseSettings').addEventListener('click', () => {
+  $('settingsModal').hidden = true;
+  disarmEndGame();
+});
 $('settingsModal').addEventListener('click', (e) => {
   if (e.target === $('settingsModal')) $('settingsModal').hidden = true;
 });
 
 $('btnAddBot').addEventListener('click', () => net?.send('addBot'));
+
+/**
+ * Ending the game clears the table for everyone, so it asks twice. Without
+ * this there is no way off a running table back to the main menu.
+ */
+let endGameArmed = false;
+
+function disarmEndGame() {
+  endGameArmed = false;
+  $('btnEndGame').textContent = '게임 끝내고 메인 메뉴로';
+  $('btnEndGame').classList.remove('armed');
+}
+
+$('btnEndGame').addEventListener('click', () => {
+  if (!endGameArmed) {
+    endGameArmed = true;
+    $('btnEndGame').textContent = '한 번 더 누르면 끝납니다';
+    $('btnEndGame').classList.add('armed');
+    setTimeout(disarmEndGame, 5000);
+    return;
+  }
+  disarmEndGame();
+  net?.send('reset');
+  $('settingsModal').hidden = true;
+  menu.reopen();
+});
 
 $('settingsForm').addEventListener('submit', (e) => {
   e.preventDefault();

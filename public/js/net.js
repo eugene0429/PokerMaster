@@ -5,6 +5,7 @@
 
 const TOKEN_KEY = 'pm-token';
 const NAME_KEY = 'pm-name';
+const BUILD_KEY = 'pm-build';
 
 export function savedName() { return localStorage.getItem(NAME_KEY) ?? ''; }
 export function saveName(name) { localStorage.setItem(NAME_KEY, name); }
@@ -24,6 +25,17 @@ export function connect({ onUpdate, onIdentity, onError, onStatus }) {
   socket.on('identity', (payload) => {
     localStorage.setItem(TOKEN_KEY, payload.token);
     if (payload.name) saveName(payload.name);
+
+    // The server restarted under us, so this page may be running old code.
+    // The seat is held by the token in localStorage, so reloading costs nothing.
+    const seen = sessionStorage.getItem(BUILD_KEY);
+    if (payload.build && seen && seen !== payload.build) {
+      sessionStorage.setItem(BUILD_KEY, payload.build);
+      location.reload();
+      return;
+    }
+    if (payload.build) sessionStorage.setItem(BUILD_KEY, payload.build);
+
     onIdentity?.(payload);
   });
   socket.on('update', onUpdate);

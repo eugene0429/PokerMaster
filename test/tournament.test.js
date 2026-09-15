@@ -1,4 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { Room } from '../server/room.js';
 import { blindsForLevel, levelForElapsed, MAX_LEVEL, MODE } from '../server/blinds.js';
 
@@ -14,6 +15,23 @@ afterEach(() => {
 });
 
 const MINUTE = 60 * 1000;
+
+describe('the default game mode', () => {
+  it('matches the option the main menu shows pre-selected', () => {
+    const menu = readFileSync(new URL('../public/js/menu.js', import.meta.url), 'utf8');
+    const preselected = /gameMode:\s*'([a-z]+)'/.exec(menu)?.[1];
+    expect(preselected).toBeTruthy();
+    expect(new Room({ send: () => {} }).config.mode).toBe(preselected);
+  });
+
+  it('opens a tournament when the client forgets to say which mode', () => {
+    const room = makeRoom();
+    const host = room.join({ socketId: 's1', name: 'Host' });
+    room.startTable(host.id, { name: 'Host', seat: 0, bots: 2 });   // no mode
+    expect(room.config.mode).toBe(MODE.TOURNAMENT);
+    expect(room.levelEndsAt).toBeNull();      // clock starts with the first hand
+  });
+});
 
 describe('the blind ladder', () => {
   it('escalates the way a tournament clock does', () => {

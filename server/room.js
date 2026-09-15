@@ -3,7 +3,9 @@ import { MAX_SEATS, ACTION } from '../engine/constants.js';
 import { startHand, applyAction, legalActions, IllegalAction } from '../engine/table.js';
 import { decideBotAction, pickBotName, botThinkingTime } from './bots.js';
 import { makeProfileDealer } from './bot-profiles.js';
-import { blindsForLevel, levelForElapsed, MAX_LEVEL, MODE, RISING_BLINDS } from './blinds.js';
+import {
+  blindsForLevel, levelForElapsed, maxLevelFor, DEFAULT_STRUCTURE, MODE, RISING_BLINDS,
+} from './blinds.js';
 import { snapshotFor } from './view.js';
 
 const DEFAULTS = {
@@ -18,7 +20,12 @@ const DEFAULTS = {
   mode: MODE.TOURNAMENT,
   levelMinutes: 10,
   totalMinutes: 60,
+  rebuys: 0,          // -1 means unlimited
+  structure: DEFAULT_STRUCTURE,
 };
+
+const UNLIMITED_REBUYS = -1;
+const STRUCTURE_KEYS = new Set(['standard', 'turbo']);
 
 /**
  * Identifies this server process. A page left open across a restart is running
@@ -194,6 +201,7 @@ export class Room {
     player.stack = this.config.startingStack;
     player.sittingOut = false;
     player.timeouts = 0;
+    player.rebuysUsed = 0;
     this.maybeStartHand();
     this.publish();
   }
@@ -226,7 +234,9 @@ export class Room {
     if (!RISING_BLINDS.has(this.config.mode) || !this.startedAt) return;
     if (player.seat === null) return;
     if (this.eliminated.some((p) => p.id === player.id)) return;
-    this.eliminated.push({ id: player.id, name: player.name, isBot: player.isBot });
+    this.eliminated.push({
+      id: player.id, name: player.name, isBot: player.isBot, rebuysUsed: player.rebuysUsed ?? 0,
+    });
   }
 
   unseat(player) {
@@ -292,7 +302,7 @@ export class Room {
     this.players.set(id, {
       id, token: randomUUID(), name: this.uniqueName(pickBotName(taken)),
       seat: target, stack: this.config.startingStack, isBot: true,
-      profile: this.nextProfile(),
+      profile: this.nextProfile(), rebuysUsed: 0,
       connected: true, sittingOut: false, disconnectedAt: null, timeouts: 0,
     });
     this.maybeStartHand();
@@ -327,7 +337,13 @@ export class Room {
     const mode = Object.values(MODE).includes(patch.mode) ? patch.mode : this.config.mode;
     const levelMinutes = clampInt(patch.levelMinutes, 1, 120, this.config.levelMinutes);
     const totalMinutes = clampInt(patch.totalMinutes, 5, 600, this.config.totalMinutes);
-    this.config = { ...this.config, sb, bb, startingStack, turnSeconds, mode, levelMinutes, totalMinutes };
+    const rebuys = clampInt(patch.rebuys, UNLIMITED_REBUYS, 99, this.config.rebuys);
+    const structure = maxLevelFor(patch.structure) && STRUCTURE_KEYS.has(patch.structure)
+      ? patch.structure : this.config.structure;
+    this.config = {
+      ...this.config,
+      sb, bb, startingStack, turnSeconds, mode, levelMinutes, totalMinutes, rebuys, structure,
+    };
   }
 
   /**
@@ -385,10 +401,11 @@ export class Room {
   isTournament() { return this.config.mode === MODE.TOURNAMENT; }
   get finished() { return this.phase === 'finished'; }
   get levelMs() { return this.config.levelMinutes * 60 * 1000; }
+  get maxLevel() { return maxLevelFor(this.config.structure); }
 
   get levelEndsAt() {
     if (!this.startedAt || !RISING_BLINDS.has(this.config.mode)) return null;
-    if (this.level >= MAX_LEVEL) return null;
+    if (this.level >= this.maxLevel) return null;
     return this.startedAt + (this.level + 1) * this.levelMs;
   }
 
@@ -398,10 +415,10 @@ export class Room {
    */
   applyDueLevel() {
     if (!RISING_BLINDS.has(this.config.mode) || !this.startedAt) return;
-    const due = levelForElapsed(Date.now() - this.startedAt, this.levelMs);
+    const due = levelForElapsed(Date.now() - this.startedAt, this.levelMs, this.maxLevel);
     if (due <= this.level) return;
     this.level = due;
-    const { sb, bb } = blindsForLevel(this.baseBlinds, this.level);
+    const { sb, bb } = blindsForLevel(this.baseBlinds, this.level, this.config.structure);
     this.config = { ...this.config, sb, bb };
   }
 
@@ -430,13 +447,6 @@ export class Room {
   beginHand() {
     this.countdownEndsAt = null;
     if (this.finished) return;
-
-    // A cash table is a practice table: busted players just get a fresh stack.
-    if (this.config.mode === MODE.CASH) {
-      for (const p of this.seatedPlayers()) {
-        if (p.stack <= 0) p.stack = this.config.startingStack;
-      }
-    }
 
     if (this.startedAt === null) this.startedAt = Date.now();
     if (this.config.mode === MODE.TIMED && this.endsAt === null) {
@@ -577,41 +587,62 @@ export class Room {
       }
     }
 
-    if (RISING_BLINDS.has(this.config.mode)) this.knockOutBustedPlayers();
-
-    this.publish();
+    this.publish(this.handleBustedPlayers());
 
     if (this.checkForGameOver()) return;
     this.setTimer('next', SETTLE_MS, () => this.maybeStartHand());
   }
 
-  /** No rebuys outside cash: a dead stack leaves the table and watches. */
-  knockOutBustedPlayers() {
+  get rebuysAreUnlimited() {
+    return this.config.rebuys === UNLIMITED_REBUYS;
+  }
+
+  rebuysLeft(player) {
+    if (this.rebuysAreUnlimited) return Infinity;
+    return Math.max(0, this.config.rebuys - (player.rebuysUsed ?? 0));
+  }
+
+  /**
+   * A dead stack either buys back in or leaves — the same rule in every mode.
+   * Bots get no exemption. With unlimited rebuys nobody ever leaves, which is
+   * what makes a cash table endless.
+   */
+  handleBustedPlayers() {
+    const events = [];
     const busted = this.seatedPlayers()
       .filter((p) => p.stack <= 0)
       .sort((a, b) => a.seat - b.seat);
 
     for (const p of busted) {
-      this.eliminated.push({ id: p.id, name: p.name, isBot: p.isBot });
+      if (this.rebuysLeft(p) > 0) {
+        p.rebuysUsed = (p.rebuysUsed ?? 0) + 1;
+        p.stack = this.config.startingStack;
+        events.push({
+          type: 'rebuy', seat: p.seat, name: p.name,
+          stack: p.stack, used: p.rebuysUsed,
+          remaining: this.rebuysAreUnlimited ? null : this.rebuysLeft(p),
+        });
+        continue;
+      }
+      this.eliminated.push({
+        id: p.id, name: p.name, isBot: p.isBot, rebuysUsed: p.rebuysUsed ?? 0,
+      });
+      events.push({ type: 'knockOut', seat: p.seat, name: p.name });
       this.unseat(p);
       if (p.isBot) { this.players.delete(p.id); this.tokens.delete(p.token); }
     }
+    return events;
   }
 
   checkForGameOver() {
-    if (this.config.mode === MODE.CASH) return false;
-
-    const alive = this.seatedPlayers().filter((p) => p.stack > 0);
-    if (this.isTournament() && alive.length <= 1 && this.startedAt) {
-      this.finish('최후의 1인');
-      return true;
-    }
     if (this.config.mode === MODE.TIMED && this.endsAt && Date.now() >= this.endsAt) {
       this.finish('시간 종료');
       return true;
     }
-    if (alive.length <= 1 && this.startedAt) {
-      this.finish('남은 플레이어가 없습니다');
+    // With unlimited rebuys nobody is ever knocked out, so this cannot fire.
+    const alive = this.seatedPlayers().filter((p) => p.stack > 0);
+    if (this.startedAt && alive.length <= 1 && !this.rebuysAreUnlimited) {
+      this.finish('최후의 1인');
       return true;
     }
     return false;
@@ -627,9 +658,9 @@ export class Room {
     const survivors = this.seatedPlayers()
       .slice()
       .sort((a, b) => b.stack - a.stack)
-      .map((p) => ({ name: p.name, isBot: p.isBot, stack: p.stack }));
+      .map((p) => ({ name: p.name, isBot: p.isBot, stack: p.stack, rebuysUsed: p.rebuysUsed ?? 0 }));
     const knockedOut = [...this.eliminated].reverse()
-      .map((p) => ({ name: p.name, isBot: p.isBot, stack: 0 }));
+      .map((p) => ({ name: p.name, isBot: p.isBot, stack: 0, rebuysUsed: p.rebuysUsed ?? 0 }));
 
     this.results = {
       reason,

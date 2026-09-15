@@ -1,7 +1,9 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { Room } from '../server/room.js';
-import { blindsForLevel, levelForElapsed, MAX_LEVEL, MODE } from '../server/blinds.js';
+import {
+  blindsForLevel, levelForElapsed, maxLevelFor, STRUCTURES, MODE,
+} from '../server/blinds.js';
 
 const rooms = [];
 function makeRoom() {
@@ -34,30 +36,54 @@ describe('the default game mode', () => {
 });
 
 describe('the blind ladder', () => {
-  it('escalates the way a tournament clock does', () => {
-    const base = { sb: 50, bb: 100 };
-    expect(blindsForLevel(base, 0)).toEqual({ sb: 50, bb: 100 });
-    expect(blindsForLevel(base, 1)).toEqual({ sb: 100, bb: 200 });
-    expect(blindsForLevel(base, 2)).toEqual({ sb: 150, bb: 300 });
-    expect(blindsForLevel(base, 3)).toEqual({ sb: 200, bb: 400 });
-    expect(blindsForLevel(base, 4)).toEqual({ sb: 300, bb: 600 });
+  const BASE = { sb: 25, bb: 50 };
+
+  it('climbs about 1.5x a level on the standard ladder, like a casino clock', () => {
+    const seen = [0, 1, 2, 3, 4, 5, 6].map((l) => blindsForLevel(BASE, l, 'standard').bb);
+    expect(seen).toEqual([50, 100, 150, 200, 300, 400, 600]);
+  });
+
+  it('doubles every level on the turbo ladder', () => {
+    const seen = [0, 1, 2, 3, 4, 5].map((l) => blindsForLevel(BASE, l, 'turbo').bb);
+    expect(seen).toEqual([50, 100, 200, 400, 800, 1600]);
+
+    for (let level = 1; level <= maxLevelFor('turbo'); level++) {
+      const prev = blindsForLevel(BASE, level - 1, 'turbo');
+      expect(blindsForLevel(BASE, level, 'turbo')).toEqual({ sb: prev.sb * 2, bb: prev.bb * 2 });
+    }
+  });
+
+  it('keeps the small blind at half the big blind on both ladders', () => {
+    for (const key of Object.keys(STRUCTURES)) {
+      for (let level = 0; level <= maxLevelFor(key); level++) {
+        const b = blindsForLevel(BASE, level, key);
+        expect(b.bb).toBe(b.sb * 2);
+      }
+    }
   });
 
   it('scales off whatever blinds the host chose', () => {
-    expect(blindsForLevel({ sb: 25, bb: 50 }, 3)).toEqual({ sb: 100, bb: 200 });
+    expect(blindsForLevel({ sb: 50, bb: 100 }, 3, 'standard')).toEqual({ sb: 200, bb: 400 });
+    expect(blindsForLevel({ sb: 50, bb: 100 }, 3, 'turbo')).toEqual({ sb: 400, bb: 800 });
   });
 
-  it('stops climbing at the top of the ladder', () => {
-    const base = { sb: 50, bb: 100 };
-    expect(blindsForLevel(base, 99)).toEqual(blindsForLevel(base, MAX_LEVEL));
+  it('falls back to the standard ladder for an unknown structure', () => {
+    expect(blindsForLevel(BASE, 4, 'nonsense')).toEqual(blindsForLevel(BASE, 4, 'standard'));
+  });
+
+  it('stops climbing at the top of each ladder', () => {
+    for (const key of Object.keys(STRUCTURES)) {
+      expect(blindsForLevel(BASE, 99, key)).toEqual(blindsForLevel(BASE, maxLevelFor(key), key));
+    }
   });
 
   it('reads the level off the clock', () => {
-    expect(levelForElapsed(0, 10 * MINUTE)).toBe(0);
-    expect(levelForElapsed(9.9 * MINUTE, 10 * MINUTE)).toBe(0);
-    expect(levelForElapsed(10 * MINUTE, 10 * MINUTE)).toBe(1);
-    expect(levelForElapsed(25 * MINUTE, 10 * MINUTE)).toBe(2);
-    expect(levelForElapsed(9999 * MINUTE, 10 * MINUTE)).toBe(MAX_LEVEL);
+    const max = maxLevelFor('standard');
+    expect(levelForElapsed(0, 10 * MINUTE, max)).toBe(0);
+    expect(levelForElapsed(9.9 * MINUTE, 10 * MINUTE, max)).toBe(0);
+    expect(levelForElapsed(10 * MINUTE, 10 * MINUTE, max)).toBe(1);
+    expect(levelForElapsed(25 * MINUTE, 10 * MINUTE, max)).toBe(2);
+    expect(levelForElapsed(9999 * MINUTE, 10 * MINUTE, max)).toBe(max);
   });
 });
 
@@ -74,7 +100,7 @@ describe('raising the blinds', () => {
     room.startedAt = Date.now() - 25 * MINUTE;
     room.applyDueLevel();
     expect(room.level).toBe(2);
-    expect(room.config).toMatchObject({ sb: 150, bb: 300 });
+    expect(room.config).toMatchObject({ sb: 150, bb: 300 });   // standard ladder
   });
 
   it('leaves the blinds alone before the first level is up', () => {
@@ -94,22 +120,41 @@ describe('raising the blinds', () => {
     expect(room.config).toMatchObject({ sb: 50, bb: 100 });
   });
 
+  it('uses the turbo ladder when the host picked it', () => {
+    const room = tournamentRoom();
+    room.config = { ...room.config, structure: 'turbo' };
+    room.startedAt = Date.now() - 25 * MINUTE;
+    room.applyDueLevel();
+    expect(room.level).toBe(2);
+    expect(room.config).toMatchObject({ sb: 200, bb: 400 });
+  });
+
+  it('carries the structure through startTable', () => {
+    const room = makeRoom();
+    const host = room.join({ socketId: 's1', name: 'Host' });
+    room.startTable(host.id, {
+      name: 'Host', seat: 0, bots: 1, mode: MODE.TOURNAMENT, structure: 'turbo',
+    });
+    expect(room.config.structure).toBe('turbo');
+    expect(room.maxLevel).toBe(maxLevelFor('turbo'));
+  });
+
   it('knows when the next level is due', () => {
     const room = tournamentRoom();
     room.startedAt = 1_000_000;
     expect(room.levelEndsAt).toBe(1_000_000 + 10 * MINUTE);
     room.level = 3;
     expect(room.levelEndsAt).toBe(1_000_000 + 40 * MINUTE);
-    room.level = MAX_LEVEL;
+    room.level = room.maxLevel;
     expect(room.levelEndsAt).toBeNull();
   });
 });
 
 describe('knocking players out', () => {
-  function seatedRoom(mode) {
+  function seatedRoom(mode, rebuys = 0) {
     const room = makeRoom();
     const host = room.join({ socketId: 's1', name: 'Host' });
-    room.startTable(host.id, { name: 'Host', seat: 0, bots: 3, mode, startingStack: 1000 });
+    room.startTable(host.id, { name: 'Host', seat: 0, bots: 3, mode, startingStack: 1000, rebuys });
     return { room, host };
   }
 
@@ -117,9 +162,9 @@ describe('knocking players out', () => {
     const { room } = seatedRoom(MODE.TOURNAMENT);
     const [a, b] = room.seatedPlayers().filter((p) => p.isBot);
     a.stack = 0;
-    room.knockOutBustedPlayers();
+    room.handleBustedPlayers();
     b.stack = 0;
-    room.knockOutBustedPlayers();
+    room.handleBustedPlayers();
 
     expect(room.eliminated.map((p) => p.name)).toEqual([a.name, b.name]);
     expect(room.seatedPlayers()).toHaveLength(2);
@@ -130,8 +175,8 @@ describe('knocking players out', () => {
     const bots = room.seatedPlayers().filter((p) => p.isBot);
     room.startedAt = Date.now();
 
-    bots[0].stack = 0; room.knockOutBustedPlayers();
-    bots[1].stack = 0; room.knockOutBustedPlayers();
+    bots[0].stack = 0; room.handleBustedPlayers();
+    bots[1].stack = 0; room.handleBustedPlayers();
     host.stack = 2500;
     bots[2].stack = 1500;
 
@@ -144,9 +189,10 @@ describe('knocking players out', () => {
 
   it('hands a busted cash player a fresh stack instead', () => {
     const { room } = seatedRoom(MODE.CASH);
+    room.config = { ...room.config, rebuys: -1 };
     const bot = room.seatedPlayers().find((p) => p.isBot);
     bot.stack = 0;
-    room.beginHand();
+    room.handleBustedPlayers();
     expect(bot.stack).toBe(1000);
     expect(room.eliminated).toHaveLength(0);
   });
@@ -190,7 +236,7 @@ describe('leaving a tournament early', () => {
     const seat = bot.seat;
 
     bot.stack = 0;
-    room.knockOutBustedPlayers();
+    room.handleBustedPlayers();
     expect(room.eliminated).toHaveLength(1);
     expect(room.playerAtSeat(seat)).toBeNull();
   });
@@ -344,5 +390,124 @@ describe('starting over', () => {
     expect(room.level).toBe(0);
     expect(room.startedAt).toBeNull();
     expect(room.phase).toBe('idle');
+  });
+});
+
+describe('rebuys', () => {
+  function table({ rebuys, mode = MODE.TOURNAMENT, bots = 3 }) {
+    const room = makeRoom();
+    const host = room.join({ socketId: 's1', name: 'Host' });
+    room.startTable(host.id, {
+      name: 'Host', seat: 0, bots, mode, startingStack: 1000, rebuys,
+    });
+    room.startedAt = Date.now();
+    return { room, host };
+  }
+
+  it('buys a busted player back in until the allowance runs out', () => {
+    const { room } = table({ rebuys: 2 });
+    const bot = room.seatedPlayers().find((p) => p.isBot);
+
+    for (let i = 1; i <= 2; i++) {
+      bot.stack = 0;
+      const events = room.handleBustedPlayers();
+      expect(events.find((e) => e.type === 'rebuy')).toMatchObject({ used: i, remaining: 2 - i });
+      expect(bot.stack).toBe(1000);
+      expect(room.playerAtSeat(bot.seat)).toBe(bot);
+    }
+
+    // Third bust: no allowance left, so they are out.
+    const seat = bot.seat;
+    bot.stack = 0;
+    const events = room.handleBustedPlayers();
+    expect(events.find((e) => e.type === 'knockOut')).toBeTruthy();
+    expect(room.playerAtSeat(seat)).toBeNull();
+    expect(room.eliminated.map((p) => p.name)).toContain(bot.name);
+  });
+
+  it('knocks a player out on the first bust when rebuys are off', () => {
+    const { room } = table({ rebuys: 0 });
+    const bot = room.seatedPlayers().find((p) => p.isBot);
+    const seat = bot.seat;
+    bot.stack = 0;
+    room.handleBustedPlayers();
+    expect(room.playerAtSeat(seat)).toBeNull();
+  });
+
+  it('never knocks anyone out when rebuys are unlimited', () => {
+    const { room } = table({ rebuys: -1, mode: MODE.CASH });
+    const bot = room.seatedPlayers().find((p) => p.isBot);
+    for (let i = 0; i < 25; i++) {
+      bot.stack = 0;
+      room.handleBustedPlayers();
+    }
+    expect(bot.stack).toBe(1000);
+    expect(room.eliminated).toHaveLength(0);
+    expect(room.checkForGameOver()).toBe(false);
+  });
+
+  it('gives bots exactly the same allowance as people', () => {
+    const { room, host } = table({ rebuys: 1 });
+    const bot = room.seatedPlayers().find((p) => p.isBot);
+
+    host.stack = 0;
+    bot.stack = 0;
+    room.handleBustedPlayers();
+    expect(host.stack).toBe(1000);
+    expect(bot.stack).toBe(1000);
+
+    const botSeat = bot.seat;
+    const hostSeat = host.seat;
+    host.stack = 0;
+    bot.stack = 0;
+    room.handleBustedPlayers();
+    expect(room.playerAtSeat(hostSeat)).toBeNull();
+    expect(room.playerAtSeat(botSeat)).toBeNull();
+  });
+
+  it('restores exactly the starting stack, not the current blind level', () => {
+    const { room } = table({ rebuys: 3 });
+    room.config = { ...room.config, sb: 400, bb: 800 };   // blinds climbed
+    const bot = room.seatedPlayers().find((p) => p.isBot);
+    bot.stack = 0;
+    room.handleBustedPlayers();
+    expect(bot.stack).toBe(room.config.startingStack);
+  });
+
+  it('lets a capped cash game finish', () => {
+    const { room, host } = table({ rebuys: 0, mode: MODE.CASH, bots: 1 });
+    const bot = room.seatedPlayers().find((p) => p.isBot);
+    bot.stack = 0;
+    room.handleBustedPlayers();
+    expect(room.checkForGameOver()).toBe(true);
+    expect(room.results.reason).toBe('최후의 1인');
+  });
+
+  it('records how many rebuys each player used in the standings', () => {
+    const { room, host } = table({ rebuys: 1 });
+    const bot = room.seatedPlayers().find((p) => p.isBot);
+    bot.stack = 0;
+    room.handleBustedPlayers();        // bot rebuys once
+    bot.stack = 0;
+    room.handleBustedPlayers();        // and is out
+    host.stack = 3000;
+
+    room.finish('최후의 1인');
+    const byName = Object.fromEntries(room.results.standings.map((r) => [r.name, r.rebuysUsed]));
+    expect(byName[bot.name]).toBe(1);
+    expect(byName[host.name]).toBe(0);
+  });
+
+  it('gives a new player at the same seat a fresh allowance', () => {
+    const room = makeRoom();
+    const host = room.join({ socketId: 's1', name: 'Host' });
+    room.startTable(host.id, { name: 'Host', seat: 0, bots: 1, mode: MODE.CASH, rebuys: 1 });
+    const guest = room.join({ socketId: 's2', name: 'Guest' });
+    room.sitDown(guest.id, 4);
+    guest.rebuysUsed = 1;
+
+    room.standUp(guest.id);
+    room.sitDown(guest.id, 4);
+    expect(guest.rebuysUsed).toBe(0);
   });
 });

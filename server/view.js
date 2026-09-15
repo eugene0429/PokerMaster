@@ -1,5 +1,5 @@
 import { legalActions } from '../engine/table.js';
-import { blindsForLevel, MAX_LEVEL, RISING_BLINDS } from './blinds.js';
+import { blindsForLevel, STRUCTURES, RISING_BLINDS } from './blinds.js';
 
 /**
  * Build the one view of the table that this player is allowed to see.
@@ -29,6 +29,8 @@ export function snapshotFor(room, playerId) {
       inHand: !!hp,
       // Sat down mid-hand: dealt in from the next one. Not a state between hands.
       waiting: !!hand && !hand.complete && !hp && !pl.sittingOut,
+      rebuysUsed: pl.rebuysUsed ?? 0,
+      rebuysLeft: room.rebuysAreUnlimited ? null : room.rebuysLeft(pl),
       folded: hp?.folded ?? false,
       allIn: hp?.allIn ?? false,
       committed: hp?.streetCommitted ?? 0,
@@ -78,14 +80,18 @@ function gameState(room) {
   return {
     mode: room.config.mode,
     level: room.level,
-    maxLevel: MAX_LEVEL,
+    maxLevel: room.maxLevel,
+    structure: room.config.structure,
+    structureLabel: STRUCTURES[room.config.structure]?.label ?? '정석',
     rising,
     blinds: { sb: room.config.sb, bb: room.config.bb },
-    nextBlinds: rising && room.level < MAX_LEVEL
-      ? blindsForLevel(room.baseBlinds, room.level + 1)
+    nextBlinds: rising && room.level < room.maxLevel
+      ? blindsForLevel(room.baseBlinds, room.level + 1, room.config.structure)
       : null,
     levelMinutes: room.config.levelMinutes,
     totalMinutes: room.config.totalMinutes,
+    rebuys: room.config.rebuys,
+    rebuysUnlimited: room.rebuysAreUnlimited,
     startedAt: room.startedAt,
     levelEndsAt: room.levelEndsAt,
     endsAt: room.endsAt,

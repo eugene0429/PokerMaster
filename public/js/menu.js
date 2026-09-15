@@ -17,14 +17,42 @@ const MODE_PRESETS = [
   { key: 'timed', label: '시간 제한' },
   { key: 'cash', label: '캐시 게임' },
 ];
+const STRUCTURE_PRESETS = [
+  { key: 'standard', label: '정석 1.5배' },
+  { key: 'turbo', label: '터보 2배' },
+];
 const LEVEL_PRESETS = [5, 10, 15];
 const TOTAL_PRESETS = [30, 60, 90];
+const REBUY_PRESETS = [
+  { value: 0, label: '없음' },
+  { value: 1, label: '1회' },
+  { value: 2, label: '2회' },
+  { value: 3, label: '3회' },
+  { value: -1, label: '무제한' },
+];
+const DEFAULT_REBUYS = { tournament: 0, timed: 0, cash: -1 };
 
-const MODE_BLURB = {
-  tournament: '블라인드가 오르고, 칩을 다 잃으면 탈락합니다. 마지막 한 명이 우승.',
-  timed: '정해진 시간이 지나면 칩이 가장 많은 사람이 우승합니다.',
-  cash: '블라인드 고정, 칩이 떨어지면 자동 리바이. 끝없이 연습만 합니다.',
-};
+/** The blurb has to describe the actual combination, not just the mode. */
+function blurbFor(mode, rebuys, structure = 'standard') {
+  const unlimited = rebuys === -1;
+  const fate = unlimited
+    ? '칩이 떨어지면 계속 리바이해서 탈락이 없습니다.'
+    : rebuys === 0
+      ? '칩을 잃으면 바로 탈락합니다.'
+      : `리바이 ${rebuys}회를 다 쓰면 탈락합니다.`;
+
+  if (mode === 'cash') {
+    return `블라인드 고정. ${fate}${unlimited ? ' 끝없이 연습만 합니다.' : ' 마지막 한 명이 남으면 끝납니다.'}`;
+  }
+  const climb = structure === 'turbo'
+    ? '블라인드가 레벨마다 2배가 됩니다'
+    : '블라인드가 레벨마다 1.5배씩 오릅니다';
+
+  if (mode === 'timed') {
+    return `${climb}. 정한 시간이 지나면 칩 1위가 우승합니다. ${fate}`;
+  }
+  return `${climb}. ${fate}${unlimited ? ' 탈락이 없어 저절로 끝나지는 않습니다.' : ' 마지막 한 명이 우승합니다.'}`;
+}
 
 const $ = (id) => document.getElementById(id);
 
@@ -38,6 +66,9 @@ const state = {
   stack: 10000,
   levelMinutes: 10,
   totalMinutes: 60,
+  structure: 'standard',
+  rebuys: 0,
+  rebuysTouched: false,
   open: true,
 };
 
@@ -52,6 +83,12 @@ export function initMenu(h) {
     select: () => { state.gameMode = m.key; syncMode(); },
   })));
 
+  buildPresets($('structurePresets'), STRUCTURE_PRESETS.map((x) => ({
+    label: x.label,
+    isActive: () => state.structure === x.key,
+    select: () => { state.structure = x.key; syncBlurb(); },
+  })));
+
   buildPresets($('levelPresets'), LEVEL_PRESETS.map((m) => ({
     label: `${m}분`,
     isActive: () => state.levelMinutes === m,
@@ -62,6 +99,12 @@ export function initMenu(h) {
     label: `${m}분`,
     isActive: () => state.totalMinutes === m,
     select: () => { state.totalMinutes = m; },
+  })));
+
+  rebuyButtons = buildPresets($('rebuyPresets'), REBUY_PRESETS.map((r) => ({
+    label: r.label,
+    isActive: () => state.rebuys === r.value,
+    select: () => { state.rebuys = r.value; state.rebuysTouched = true; syncBlurb(); },
   })));
 
   buildPresets($('blindPresets'), BLIND_PRESETS.map((b, i) => ({
@@ -94,9 +137,21 @@ export function initMenu(h) {
 /** Only show the clock options the chosen mode actually uses. */
 function syncMode() {
   $('levelRow').hidden = state.gameMode === 'cash';
+  $('structureRow').hidden = state.gameMode === 'cash';
   $('totalRow').hidden = state.gameMode !== 'timed';
-  $('modeBlurb').textContent = MODE_BLURB[state.gameMode];
+  // Each mode has a sensible rebuy default, but once you pick one it sticks.
+  if (!state.rebuysTouched) {
+    state.rebuys = DEFAULT_REBUYS[state.gameMode];
+    repaintPresets(rebuyButtons);
+  }
+  syncBlurb();
 }
+
+function syncBlurb() {
+  $('modeBlurb').textContent = blurbFor(state.gameMode, state.rebuys, state.structure);
+}
+
+let rebuyButtons = [];
 
 function buildPresets(host, items) {
   host.innerHTML = '';
@@ -113,6 +168,12 @@ function buildPresets(host, items) {
     return b;
   });
   buttons.forEach((btn, i) => btn.classList.toggle('on', items[i].isActive()));
+  return { buttons, items };
+}
+
+function repaintPresets(group) {
+  if (!group) return;
+  group.buttons.forEach((btn, i) => btn.classList.toggle('on', group.items[i].isActive()));
 }
 
 function setBots(n) {
@@ -135,6 +196,8 @@ function enter() {
       mode: state.gameMode,
       levelMinutes: state.levelMinutes,
       totalMinutes: state.totalMinutes,
+      structure: state.structure,
+      rebuys: state.rebuys,
     });
   } else {
     handlers.onJoin?.({ name });
@@ -182,6 +245,8 @@ export function updateMenu(snapshot) {
       <div class="summary-row"><span>게임 방식</span><strong>${MODE_LABEL[game.mode]}</strong></div>
       <div class="summary-row"><span>블라인드</span><strong>${formatChips(game.blinds.sb)} / ${formatChips(game.blinds.bb)}</strong></div>
       <div class="summary-row"><span>시작 스택</span><strong>${formatChips(snapshot.config.startingStack)}</strong></div>
+      <div class="summary-row"><span>상승 폭</span><strong>${game.rising ? game.structureLabel : '고정'}</strong></div>
+      <div class="summary-row"><span>리바이</span><strong>${game.rebuysUnlimited ? '무제한' : (game.rebuys === 0 ? '없음' : `${game.rebuys}회`)}</strong></div>
       <div class="summary-row"><span>앉은 사람</span><strong>${seated.length}명 (사람 ${humans})</strong></div>`;
 
     if (locked) {

@@ -84,6 +84,7 @@ function handleUpdate({ snapshot: next, events }) {
   if (!first) {
     runEffects(events, before);
     playSounds(events);
+    announceBustOuts(events, snapshot.you?.seat ?? null);
   }
 
   paintClock();
@@ -147,6 +148,23 @@ function playSounds(events) {
     }
     if (e.type === 'actionOn' && e.seat === snapshot.you?.seat) sound.play('turn');
     if (e.type === 'awardPot') sound.play(e.seat === snapshot.you?.seat ? 'win' : 'lose');
+    if (e.type === 'rebuy') sound.play('chips');
+  }
+}
+
+/** Busting out is the one thing you should never have to infer from the table. */
+function announceBustOuts(events, mySeat) {
+  for (const e of events) {
+    if (e.type === 'rebuy' && e.seat === mySeat) {
+      toast(e.remaining === null
+        ? `칩이 떨어져 리바이했습니다`
+        : `칩이 떨어져 리바이했습니다 — ${e.remaining}회 남음`);
+    }
+    if (e.type === 'knockOut') {
+      toast(e.seat === mySeat
+        ? '리바이를 모두 써서 탈락했습니다 — 관전으로 전환됩니다'
+        : `${e.name} 탈락`, e.seat === mySeat ? 'error' : '');
+    }
   }
 }
 
@@ -161,6 +179,8 @@ function renderDock(s) {
     addStrip(`${hero.name}`, '');
     addStrip('스택', formatChips(s.seats[hero.seat]?.stack ?? hero.stack));
     if (s.hand) addStrip('팟', formatChips(s.hand.potTotal));
+    const left = s.seats[hero.seat]?.rebuysLeft;
+    if (left !== null && left !== undefined) addStrip('리바이', `${left}회 남음`);
     if (toAct?.toCall > 0) addStrip('콜 금액', formatChips(toAct.toCall), 'to-call');
   }
 
@@ -367,7 +387,9 @@ function paintResults(s) {
     li.innerHTML = `
       <span class="place">${row.place}</span>
       <span class="who">${escapeHtml(row.name)}${row.isBot ? ' <span class="bot-mark">BOT</span>' : ''}</span>
-      <span class="chips">${row.stack > 0 ? formatChips(row.stack) : '탈락'}</span>`;
+      <span class="chips">${row.stack > 0 ? formatChips(row.stack) : '탈락'}${
+        row.rebuysUsed ? `<span class="rebuy-mark">리바이 ${row.rebuysUsed}</span>` : ''
+      }</span>`;
     $('standings').appendChild(li);
   }
 

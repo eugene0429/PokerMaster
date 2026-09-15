@@ -98,6 +98,15 @@ export function noteEvents(events) {
       case 'showdown':
         decor.handNames.set(e.seat, e.name);
         break;
+      case 'rebuy':
+        decor.actions.set(e.seat, {
+          text: e.remaining === null ? '리바이' : `리바이 · ${e.remaining}회 남음`,
+          kind: 'rebuy',
+        });
+        break;
+      case 'knockOut':
+        decor.actions.set(e.seat, { text: '탈락', kind: 'out' });
+        break;
       case 'awardPot': {
         decor.winners.set(e.seat, (decor.winners.get(e.seat) ?? 0) + e.amount);
         if (e.winningCards?.length) {

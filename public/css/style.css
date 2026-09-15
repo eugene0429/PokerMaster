@@ -391,6 +391,8 @@ input { font: inherit; }
 .seat-tag.call { color: #8fd8ff; border-color: rgba(143, 216, 255, .35); }
 .seat-tag.check { color: #b7c3d3; }
 .seat-tag.allin { color: #ff9d8a; border-color: rgba(255, 157, 138, .55); }
+.seat-tag.rebuy { color: #8fd8ff; border-color: rgba(143, 216, 255, .5); }
+.seat-tag.out { color: #ffb4ad; border-color: rgba(226, 84, 74, .55); }
 .seat-tag.win { color: #0e1116; background: linear-gradient(180deg, #f4d489, #d8b35e); border-color: #d8b35e; }
 @keyframes tag-pop {
   from { opacity: 0; transform: translate(-50%, -70%) scale(.8); }
@@ -910,6 +912,7 @@ input[type=range]::-moz-range-thumb {
 }
 .standing.winner .place, .standing.winner .chips { color: #f4d489; }
 .standing .bot-mark { font-size: 11px; color: var(--muted); }
+.standing .rebuy-mark { display: block; font-size: 11px; color: #8fd8ff; opacity: .8; }
 
 /* --------------------- seats that stopped playing ---------------- */
 

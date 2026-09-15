@@ -7,6 +7,7 @@ import { formatChips } from './chips.js';
 import { setFourColor } from './cards.js';
 import { renderChat, bindChatForm } from './chat.js';
 import { createReveal } from './reveal.js';
+import { createActionLock } from './actionLock.js';
 import * as menu from './menu.js';
 import { MODE_LABEL } from './menu.js';
 import * as sound from './sound.js';
@@ -28,7 +29,9 @@ let lastPhase = null;
 let resultsKey = null;
 let pendingAwards = [];
 let pendingBustOuts = [];
-let actionPending = false;
+
+/** Guards against a second press landing before the first is answered. */
+const actionLock = createActionLock();
 
 /** The table lags the server on purpose; this owns how far behind it is. */
 const reveal = createReveal(onRevealStep);
@@ -96,7 +99,7 @@ net = connect({
   onUpdate: handleUpdate,
   onIdentity: (p) => { invite = p.invite ?? null; paintInvite(); },
   onError: (message) => {
-    actionPending = false;          // the action bounced; let them try again
+    actionLock.release();           // the action bounced; let them try again
     toast(message, 'error');
     if (snapshot) renderDock(snapshot);
   },
@@ -118,8 +121,8 @@ function handleUpdate({ snapshot: next, events }) {
     if (!events.some((e) => e.type === 'handStart')) resetDecor();
   }
 
-  // The turn has moved on (or never was ours), so the buttons are free again.
-  if (!next.toAct) actionPending = false;
+  // Free the buttons once the table has moved past the spot we acted on.
+  actionLock.sync(next);
 
   noteEvents(events);
   snapshot = next;
@@ -284,7 +287,7 @@ function dockNote(s) {
 function renderActionButtons(s, act) {
   const pot = s.hand.potTotal;
   refs.actions.innerHTML = '';
-  const locked = actionPending;
+  const locked = actionLock.locked;
 
   refs.actions.appendChild(button('fold', '폴드', '', () => send('fold'), locked));
 
@@ -366,8 +369,8 @@ function button(kind, label, sub, onClick, locked = false) {
  * would otherwise still be live, and a second press lands out of turn.
  */
 function send(type, amount) {
-  if (actionPending) return;
-  actionPending = true;
+  if (actionLock.locked) return;
+  actionLock.arm(snapshot);
   raiseValue = null;
   net.send('action', { type, amount });
   if (snapshot) renderDock(snapshot);
@@ -553,7 +556,7 @@ $('btnCopyUrl').addEventListener('click', async () => {
 document.addEventListener('keydown', (e) => {
   if (e.target.tagName === 'INPUT') return;
   const act = snapshot?.toAct;
-  if (!act || actionPending) return;
+  if (!act || actionLock.locked) return;
   const key = e.key.toLowerCase();
   if (key === 'f') send('fold');
   if (key === 'c') send(act.canCheck ? 'check' : 'call');

@@ -21,6 +21,7 @@
     <div class="topbar-actions">
       <button class="icon-btn" id="btnFourColor" title="4색 덱">◆</button>
       <button class="icon-btn" id="btnSound" title="소리">♪</button>
+      <button class="ghost-btn" id="btnPause" hidden>일시정지</button>
       <button class="ghost-btn" id="btnInviteTop">친구 초대</button>
       <button class="ghost-btn" id="btnSettings">설정</button>
       <button class="ghost-btn" id="btnStand" hidden>일어서기</button>
@@ -39,6 +40,13 @@
       <div class="layer" id="seats"></div>
       <div class="layer" id="bets"></div>
       <div class="layer fx" id="fx"></div>
+      <div class="pause-veil" id="pauseVeil" hidden>
+        <div class="pause-card">
+          <div class="pause-mark">❚❚</div>
+          <div class="pause-title">일시정지</div>
+          <div class="pause-sub" id="pauseSub">호스트가 재개할 때까지 기다립니다</div>
+        </div>
+      </div>
     </div>
   </main>
 

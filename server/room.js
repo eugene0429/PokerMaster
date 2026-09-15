@@ -70,6 +70,59 @@ export class Room {
     this.endsAt = null;                  // timed mode only
     this.eliminated = [];                // knocked out, first one out first
     this.results = null;
+    this.pausedAt = null;
+    this.suspended = [];
+    this.pausedTurnRemaining = null;
+  }
+
+  get paused() { return this.pausedAt !== null; }
+
+  /**
+   * Stop everything that runs on a clock: the turn timer, the hand countdown,
+   * the blind level and the game clock. Anything that kept moving would make
+   * the pause cost somebody something.
+   */
+  pause(playerId) {
+    if (!this.isHost(playerId)) throw new IllegalAction('호스트만 일시정지할 수 있습니다');
+    if (this.paused) return;
+    if (this.finished) throw new IllegalAction('이미 끝난 게임입니다');
+
+    const now = Date.now();
+    this.pausedAt = now;
+    this.pausedTurnRemaining = this.turnEndsAt === null ? null : Math.max(0, this.turnEndsAt - now);
+    this.turnEndsAt = null;
+
+    this.suspended = [...this.timers.entries()].map(([key, t]) => ({
+      key, fn: t.fn, remaining: Math.max(0, t.fireAt - now),
+    }));
+    for (const t of this.timers.values()) clearTimeout(t.handle);
+    this.timers.clear();
+
+    this.chat.system('게임이 일시정지되었습니다');
+    this.publish();
+  }
+
+  resume(playerId) {
+    if (!this.isHost(playerId)) throw new IllegalAction('호스트만 재개할 수 있습니다');
+    if (!this.paused) return;
+
+    // Push every clock forward by however long we stood still.
+    const stoppedFor = Date.now() - this.pausedAt;
+    if (this.startedAt !== null) this.startedAt += stoppedFor;
+    if (this.endsAt !== null) this.endsAt += stoppedFor;
+    if (this.countdownEndsAt !== null) this.countdownEndsAt += stoppedFor;
+    this.pausedAt = null;
+
+    for (const { key, remaining, fn } of this.suspended) this.setTimer(key, remaining, fn);
+    this.suspended = [];
+
+    if (this.pausedTurnRemaining !== null) {
+      this.turnEndsAt = Date.now() + this.pausedTurnRemaining;
+      this.pausedTurnRemaining = null;
+    }
+
+    this.chat.system('게임이 재개되었습니다');
+    this.publish();
   }
 
   /* --------------------------- identity ---------------------------- */
@@ -453,6 +506,9 @@ export class Room {
     this.turnEndsAt = null;
     this.countdownEndsAt = null;
     this.config = { ...this.config, sb: this.baseBlinds.sb, bb: this.baseBlinds.bb };
+    this.pausedAt = null;
+    this.suspended = [];
+    this.pausedTurnRemaining = null;
     this.chat.system('게임이 끝났습니다 — 메인 메뉴로 돌아갑니다');
     this.publish();
   }
@@ -491,7 +547,7 @@ export class Room {
   }
 
   maybeStartHand() {
-    if (this.finished) return;
+    if (this.finished || this.paused) return;
     if (this.hand && !this.hand.complete) return;
     if (this.phase === 'countdown') return;
 
@@ -508,7 +564,7 @@ export class Room {
 
   beginHand() {
     this.countdownEndsAt = null;
-    if (this.finished) return;
+    if (this.finished || this.paused) return;
     this.clearFinishedPlayers();
 
     if (this.startedAt === null) this.startedAt = Date.now();
@@ -557,6 +613,7 @@ export class Room {
     if (!player || player.seat === null) throw new IllegalAction('자리에 앉아 있지 않습니다');
     if (!this.hand || this.hand.complete) throw new IllegalAction('진행 중인 핸드가 없습니다');
     if (this.hand.currentSeat !== player.seat) throw new IllegalAction('아직 차례가 아닙니다');
+    if (this.paused) throw new IllegalAction('일시정지 중입니다');
     player.timeouts = 0;
     this.applyPlayerAction(player, action);
   }
@@ -581,7 +638,7 @@ export class Room {
   scheduleTurn() {
     this.clearTimer('turn');
     this.turnEndsAt = null;
-    if (!this.hand || this.hand.complete) return;
+    if (!this.hand || this.hand.complete || this.paused) return;
 
     const seat = this.hand.currentSeat;
     if (seat === null) return;
@@ -759,20 +816,22 @@ export class Room {
 
   setTimer(key, ms, fn) {
     this.clearTimer(key);
-    this.timers.set(key, setTimeout(() => {
+    const handle = setTimeout(() => {
       this.timers.delete(key);
       try { fn(); } catch (err) { console.error(`[room] timer ${key}:`, err.message); }
-    }, ms));
+    }, ms);
+    // The deadline and the callback are kept so a pause can put them back.
+    this.timers.set(key, { handle, fireAt: Date.now() + ms, fn });
   }
 
   clearTimer(key) {
     const t = this.timers.get(key);
-    if (t) { clearTimeout(t); this.timers.delete(key); }
+    if (t) { clearTimeout(t.handle); this.timers.delete(key); }
   }
 
   /** Drop every pending timer so the room stops holding the process open. */
   dispose() {
-    for (const t of this.timers.values()) clearTimeout(t);
+    for (const t of this.timers.values()) clearTimeout(t.handle);
     this.timers.clear();
   }
 

@@ -144,6 +144,7 @@ function handleUpdate({ snapshot: next, events }) {
   }
 
   paintClock();
+  paintPause(snapshot);
   paintResults(snapshot, reveal.view().results);
   if (lastPhase === 'finished' && snapshot.phase !== 'finished' && !snapshot.you?.seated) menu.reopen();
   lastPhase = snapshot.phase;
@@ -237,7 +238,7 @@ function renderDock(s) {
     if (toAct?.toCall > 0) addStrip('콜 금액', formatChips(toAct.toCall), 'to-call');
   }
 
-  if (!toAct) {
+  if (!toAct || s.game?.paused) {
     refs.actions.innerHTML = '';
     const note = document.createElement('div');
     note.className = 'waiting-note';
@@ -260,7 +261,8 @@ function renderDock(s) {
 }
 
 function needsPlayers(s) {
-  return s.you?.seated && !s.game?.finished && s.seats.filter(Boolean).length < 2;
+  return s.you?.seated && !s.game?.finished && !s.game?.paused
+    && s.seats.filter(Boolean).length < 2;
 }
 
 function addStrip(label, value, cls = '') {
@@ -271,6 +273,9 @@ function addStrip(label, value, cls = '') {
 }
 
 function dockNote(s) {
+  if (s.game?.paused) {
+    return s.you?.isHost ? '일시정지 중 — 재개를 누르세요' : '일시정지 중입니다';
+  }
   if (s.game?.finished) return '게임이 끝났습니다';
   if (!s.you?.seated) return '빈 자리를 눌러 앉으세요 — 관전 중입니다';
   if (s.you.sittingOut) return '자리 비움 상태입니다';
@@ -418,6 +423,26 @@ function paintTableChat(s) {
   }
 }
 
+/* ----------------------------- paused ------------------------------ */
+
+function paintPause(s) {
+  const game = s.game ?? {};
+  const running = s.seats.some(Boolean) && !game.finished;
+
+  $('btnPause').hidden = !(running && s.you?.isHost);
+  $('btnPause').textContent = game.paused ? '재개' : '일시정지';
+  $('btnPause').classList.toggle('danger', !!game.paused);
+
+  $('pauseVeil').hidden = !game.paused;
+  $('pauseSub').textContent = s.you?.isHost
+    ? '재개를 누르면 이어서 진행됩니다'
+    : '호스트가 재개할 때까지 기다립니다';
+}
+
+$('btnPause').addEventListener('click', () => {
+  net?.send(snapshot?.game?.paused ? 'resume' : 'pause');
+});
+
 /* --------------------------- game clock ---------------------------- */
 
 function mmss(ms) {
@@ -437,9 +462,14 @@ function paintClock() {
   const game = snapshot?.game;
   if (!game) return;
 
+  // While paused the clocks read from the moment they stopped, so nothing
+  // creeps forward and then snaps back when the game resumes.
+  const now = game.pausedAt ?? Date.now();
+
   const clock = $('clockLabel');
   clock.hidden = !game.startedAt;
-  if (game.startedAt) clock.textContent = mmss(Date.now() - game.startedAt);
+  if (game.startedAt) clock.textContent = mmss(now - game.startedAt);
+  clock.classList.toggle('paused', !!game.paused);
 
   // The level prefix only means something once a game is actually running.
   $('blindsLabel').textContent = game.rising && game.startedAt
@@ -451,11 +481,11 @@ function paintClock() {
   let urgent = false;
 
   if (game.mode === 'timed' && game.endsAt) {
-    const left = game.endsAt - Date.now();
+    const left = game.endsAt - now;
     text = left > 0 ? `종료까지 ${mmss(left)}` : '마지막 핸드';
     urgent = left > 0 && left < 60_000;
   } else if (game.rising && game.levelEndsAt && game.nextBlinds) {
-    const left = game.levelEndsAt - Date.now();
+    const left = game.levelEndsAt - now;
     text = left > 0
       ? `다음 ${formatChips(game.nextBlinds.sb)}/${formatChips(game.nextBlinds.bb)} · ${mmss(left)}`
       : '다음 핸드부터 블라인드 상승';

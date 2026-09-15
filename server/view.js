@@ -99,6 +99,8 @@ function gameState(room) {
     levelEndsAt: room.levelEndsAt,
     endsAt: room.endsAt,
     finished: room.finished,
+    paused: room.paused,
+    pausedAt: room.pausedAt,
     results: room.results,
     playersLeft: room.seatedPlayers().filter((p) => p.stack > 0).length,
     eliminated: room.eliminated.length,

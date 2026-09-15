@@ -835,6 +835,41 @@ input[type=range]::-moz-range-thumb {
 .menu-foot { display: flex; gap: 8px; }
 .menu-foot .ghost-btn { flex: 1; padding: 10px; }
 
+/* --------------------------- paused ------------------------------ */
+
+.pause-veil {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(6, 9, 13, .62);
+  backdrop-filter: blur(2px);
+}
+
+.pause-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(var(--u) * .5);
+  padding: calc(var(--u) * 2) calc(var(--u) * 3.4);
+  border-radius: calc(var(--u) * 1.4);
+  background: rgba(16, 20, 27, .94);
+  border: 1px solid rgba(255, 255, 255, .14);
+  box-shadow: var(--shadow-lg);
+  text-align: center;
+}
+.pause-mark {
+  font-size: calc(var(--u) * 2.6);
+  letter-spacing: calc(var(--u) * .14);
+  color: var(--gold);
+}
+.pause-title { font-size: calc(var(--u) * 2); font-weight: 650; }
+.pause-sub { font-size: calc(var(--u) * 1.15); color: var(--muted); }
+
+.info-chip.clock.paused { color: #ffd27a; border-color: rgba(255, 210, 122, .45); }
+
 /* ---------------------------- lobby ------------------------------ */
 
 .lobby {
@@ -1152,6 +1187,7 @@ input[type=range]::-moz-range-thumb {
 /* Below ~520px the topbar cannot hold the wordmark and every chip at once. */
 @media (max-width: 520px) {
   .brand-text, #handLabel, #spectatorLabel, #levelLabel { display: none; }
+  .pause-sub { display: none; }
   .info-chip { max-width: none; }
 }
 

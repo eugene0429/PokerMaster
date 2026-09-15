@@ -57,18 +57,22 @@ function client(name) {
   return c;
 }
 
-/** Two humans at a cash table, the way the main menu would open one. */
-async function twoPlayerTable(hostName, guestName, hostSeat = 0, guestSeat = 5) {
+/**
+ * Two humans at a cash table, the way the main menu opens one: both wait in
+ * the lobby and the host's start seats everybody at once.
+ */
+async function twoPlayerTable(hostName, guestName) {
   const host = client(hostName);
   const guest = client(guestName);
   await Promise.all([host.ready, guest.ready]);
+  await waitFor(() => host.snapshot?.lobby?.length === 2);
 
-  host.send('startTable', { name: hostName, seat: hostSeat, bots: 0, mode: 'cash' });
-  await waitFor(() => host.snapshot?.seats[hostSeat] !== null);
-  guest.send('sit', { seat: guestSeat, name: guestName });
-  await waitFor(() => host.snapshot?.seats[guestSeat] !== null);
+  host.send('startTable', { name: hostName, bots: 0, mode: 'cash' });
+  // Beware `x !== null` on an optional chain: it is true while the snapshot is
+  // still undefined, and the wait passes before anything has happened.
+  await waitFor(() => !!host.snapshot?.seats?.[0] && !!host.snapshot?.seats?.[1]);
 
-  return { host, guest };
+  return { host, guest, hostSeat: 0, guestSeat: 1 };
 }
 
 /** Every chip on the table: in stacks, bet in front, or sitting in the pot. */
@@ -90,15 +94,15 @@ describe('two players over the network', () => {
 
     // Each player sees their own two cards and nothing of the other's.
     expect(a.snapshot.seats[0].cards).toHaveLength(2);
-    expect(a.snapshot.seats[5].cardCount).toBe(2);
-    expect(a.snapshot.seats[5].cards).toBeNull();
+    expect(a.snapshot.seats[1].cardCount).toBe(2);
+    expect(a.snapshot.seats[1].cards).toBeNull();
 
     // Nor does the event stream carry them.
     expect(a.events.filter((e) => e.type === 'holeCards' && e.seat !== 0)).toEqual([]);
     expect(totalChips(a.snapshot)).toBe(20000);
 
     // Play it out: whoever is to act checks or calls until the hand is over.
-    const players = { 0: a, 5: b };
+    const players = { 0: a, 1: b };
     await waitFor(() => {
       for (const [seat, c] of Object.entries(players)) {
         const act = c.snapshot?.toAct;
@@ -114,7 +118,7 @@ describe('two players over the network', () => {
     expect(totalChips(a.snapshot)).toBe(20000);
 
     // Showdown tables the cards, so now both hands are visible to both players.
-    expect(a.snapshot.seats[5].cards).toHaveLength(2);
+    expect(a.snapshot.seats[1].cards).toHaveLength(2);
     expect(b.snapshot.seats[0].cards).toHaveLength(2);
 
     a.close();
@@ -122,11 +126,11 @@ describe('two players over the network', () => {
   }, 90000);
 
   it('refuses an action from a player who is not to act', async () => {
-    const { host: a, guest: b } = await twoPlayerTable('Cal', 'Dee', 2, 7);
+    const { host: a, guest: b } = await twoPlayerTable('Cal', 'Dee');
 
     await waitFor(() => a.snapshot?.hand && !a.snapshot.hand.complete, 25000);
 
-    const waiting = a.snapshot.hand.currentSeat === 2 ? b : a;
+    const waiting = a.snapshot.hand.currentSeat === 0 ? b : a;
     waiting.errors.length = 0;
     waiting.send('action', { type: 'fold' });
 
@@ -139,14 +143,14 @@ describe('two players over the network', () => {
 
   it('locks a started tournament so a latecomer can only watch', async () => {
     const host = client('Eve');
+    await host.ready;
+
+    host.send('startTable', { name: 'Eve', bots: 2, mode: 'tournament', levelMinutes: 10 });
+    await waitFor(() => typeof host.snapshot?.game?.startedAt === 'number', 25000);
+
+    // Fin shows up after the tournament is already running.
     const watcher = client('Fin');
-    await Promise.all([host.ready, watcher.ready]);
-
-    host.send('startTable', {
-      name: 'Eve', seat: 0, bots: 2, mode: 'tournament', levelMinutes: 10,
-    });
-    await waitFor(() => host.snapshot?.game?.startedAt !== null, 25000);
-
+    await watcher.ready;
     watcher.errors.length = 0;
     watcher.send('sit', { seat: 8 });
     await waitFor(() => watcher.errors.length > 0, 10000);

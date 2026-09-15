@@ -61,6 +61,22 @@
       <input id="menuName" maxlength="16" autocomplete="off" placeholder="예: 유진" />
     </label>
 
+    <div class="lobby" id="lobbyPanel">
+      <div class="lobby-head">
+        <span class="setup-label" id="lobbyLabel">참가자 0 / 10</span>
+        <button class="ghost-btn tiny" type="button" id="lobbyInvite">친구 초대</button>
+      </div>
+      <ul class="lobby-list" id="lobbyList"></ul>
+    </div>
+
+    <div class="chat" id="menuChat">
+      <ul class="chat-list" id="menuChatList"></ul>
+      <form class="chat-form" id="menuChatForm">
+        <input id="menuChatInput" maxlength="200" autocomplete="off" placeholder="메시지 보내기" />
+        <button class="ghost-btn tiny" type="submit">보내기</button>
+      </form>
+    </div>
+
     <div class="setup" id="hostSetup">
       <div class="setup-row stack">
         <span class="setup-label">게임 방식</span>
@@ -164,6 +180,20 @@
       <button type="button" class="ghost-btn" id="btnCloseResults">닫기</button>
       <button type="button" class="primary-btn" id="btnNewGame">새 게임</button>
     </div>
+  </div>
+</div>
+
+<div class="table-chat" id="tableChat" hidden>
+  <button class="chat-toggle" type="button" id="chatToggle" aria-label="채팅">
+    <span class="chat-icon">채팅</span>
+    <span class="chat-badge" id="chatBadge" hidden>0</span>
+  </button>
+  <div class="chat-panel" id="chatPanel" hidden>
+    <ul class="chat-list" id="gameChatList"></ul>
+    <form class="chat-form" id="gameChatForm">
+      <input id="gameChatInput" maxlength="200" autocomplete="off" placeholder="메시지" />
+      <button class="ghost-btn tiny" type="submit">보내기</button>
+    </form>
   </div>
 </div>
 

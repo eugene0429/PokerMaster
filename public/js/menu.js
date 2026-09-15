@@ -4,6 +4,7 @@
  */
 
 import { formatChips } from './chips.js';
+import { renderChat, bindChatForm } from './chat.js';
 
 const BLIND_PRESETS = [
   { sb: 25, bb: 50 },
@@ -59,7 +60,7 @@ const $ = (id) => document.getElementById(id);
 export const MODE_LABEL = { tournament: '토너먼트', timed: '시간 제한', cash: '캐시 게임' };
 
 const state = {
-  screen: 'host',    // host | join
+  screen: 'host',    // host | waiting | join
   gameMode: 'tournament',
   bots: 4,
   blindIndex: 1,
@@ -124,6 +125,15 @@ export function initMenu(h) {
   $('menuEnter').addEventListener('click', enter);
   $('menuName').addEventListener('keydown', (e) => { if (e.key === 'Enter') enter(); });
   $('menuInvite').addEventListener('click', () => handlers.onInvite?.());
+  $('lobbyInvite').addEventListener('click', () => handlers.onInvite?.());
+
+  bindChatForm($('menuChatForm'), $('menuChatInput'), (text) => handlers.onChat?.(text));
+
+  // Changing the name while waiting shows up in everyone else's roster.
+  $('menuName').addEventListener('change', () => {
+    const name = $('menuName').value.trim();
+    if (name) handlers.onRename?.(name);
+  });
   $('menuWatch').addEventListener('click', () => {
     state.open = false;
     hide();
@@ -176,11 +186,20 @@ function repaintPresets(group) {
   group.buttons.forEach((btn, i) => btn.classList.toggle('on', group.items[i].isActive()));
 }
 
+let botCeiling = 9;
+
+/** The table is ten chairs: every friend who shows up costs a bot seat. */
+function setBotCeiling(max) {
+  botCeiling = Math.max(0, max);
+  if (state.bots > botCeiling) state.bots = botCeiling;
+  setBots(state.bots);
+}
+
 function setBots(n) {
-  state.bots = Math.max(0, Math.min(9, n));
+  state.bots = Math.max(0, Math.min(botCeiling, n));
   $('botCount').textContent = String(state.bots);
   $('botMinus').disabled = state.bots === 0;
-  $('botPlus').disabled = state.bots === 9;
+  $('botPlus').disabled = state.bots >= botCeiling;
 }
 
 function enter() {
@@ -190,7 +209,7 @@ function enter() {
   if (state.screen === 'host') {
     const { sb, bb } = BLIND_PRESETS[state.blindIndex];
     handlers.onStart?.({
-      name, seat: 0, sb, bb,
+      name, sb, bb,
       startingStack: state.stack,
       bots: state.bots,
       mode: state.gameMode,
@@ -219,22 +238,36 @@ export function hide() {
   $('menu').hidden = true;
 }
 
-/** Re-read the table and switch between "open a table" and "join one". */
+/** Re-read the table: are we setting one up, waiting on the host, or joining? */
 export function updateMenu(snapshot) {
   if (!state.open) return;
   $('menu').hidden = false;
 
   const seated = snapshot.seats.filter(Boolean);
   const humans = seated.filter((s) => !s.isBot).length;
-  state.screen = seated.length === 0 ? 'host' : 'join';
+  const running = seated.length > 0;
+  const iAmHost = !!snapshot.you?.isHost;
+  state.screen = running ? 'join' : (iAmHost ? 'host' : 'waiting');
+
+  renderLobby(snapshot, running);
+  renderChatPanel(snapshot);
+  setBotCeiling(snapshot.maxBots ?? 9);
 
   const hosting = state.screen === 'host';
   $('hostSetup').hidden = !hosting;
-  $('joinSummary').hidden = hosting;
-  $('menuEnter').textContent = hosting ? '게임 시작' : '참가하기';
-  $('menuTagline').textContent = hosting
-    ? '같은 와이파이에 있는 친구들과 하는 홀덤 연습 테이블'
-    : '이미 열려 있는 테이블입니다. 이름만 정하면 바로 앉습니다.';
+  $('joinSummary').hidden = state.screen !== 'join';
+
+  if (hosting) {
+    $('menuEnter').textContent = '게임 시작';
+    $('menuTagline').textContent = '친구가 다 모이면 시작하세요. 모두 함께 자리에 앉습니다.';
+  } else if (state.screen === 'waiting') {
+    $('menuEnter').textContent = '호스트가 시작하기를 기다리는 중';
+    $('menuEnter').disabled = true;
+    $('menuTagline').textContent = '자리에 앉을 준비가 됐습니다. 그동안 채팅으로 이야기하세요.';
+  } else {
+    $('menuEnter').textContent = '참가하기';
+    $('menuTagline').textContent = '이미 열려 있는 테이블입니다. 이름만 정하면 바로 앉습니다.';
+  }
 
   if (!hosting) {
     const free = snapshot.seats.filter((s) => s === null).length;
@@ -260,7 +293,45 @@ export function updateMenu(snapshot) {
       $('menuEnter').disabled = false;
       $('menuEnter').textContent = '참가하기';
     }
-  } else {
+  } else if (hosting) {
     $('menuEnter').disabled = false;
   }
+}
+
+function renderLobby(snapshot, running) {
+  const roster = snapshot.lobby ?? [];
+  const seats = snapshot.config.maxSeats;
+  $('lobbyLabel').textContent = running
+    ? `관전 ${roster.length}명`
+    : `참가자 ${roster.length} / ${seats}`;
+
+  const list = $('lobbyList');
+  list.innerHTML = '';
+  if (roster.length === 0) {
+    const empty = document.createElement('li');
+    empty.className = 'lobby-empty';
+    empty.textContent = running ? '관전 중인 사람이 없습니다' : '아직 아무도 없습니다';
+    list.appendChild(empty);
+    return;
+  }
+
+  for (const member of roster) {
+    const li = document.createElement('li');
+    li.className = `lobby-member${member.name === snapshot.you?.name ? ' me' : ''}`;
+    if (member.isHost) {
+      const crown = document.createElement('span');
+      crown.className = 'crown';
+      crown.textContent = '호스트';
+      li.appendChild(crown);
+    }
+    const who = document.createElement('span');
+    who.className = 'who';
+    who.textContent = member.name;          // never innerHTML: this is someone's input
+    li.appendChild(who);
+    list.appendChild(li);
+  }
+}
+
+function renderChatPanel(snapshot) {
+  renderChat($('menuChatList'), snapshot.chat ?? [], snapshot.you?.name);
 }

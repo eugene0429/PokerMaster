@@ -6,7 +6,11 @@ export function lanAddresses() {
   const out = [];
   for (const addrs of Object.values(os.networkInterfaces())) {
     for (const a of addrs ?? []) {
-      if (a.family === 'IPv4' && !a.internal) out.push(a.address);
+      // 169.254.x is a link-local address a machine assigns itself when DHCP
+      // fails. Nobody else can reach it, so it is not an invite.
+      if (a.family === 'IPv4' && !a.internal && !a.address.startsWith('169.254.')) {
+        out.push(a.address);
+      }
     }
   }
   // Private ranges first — that is what the friend on the same wifi will use.

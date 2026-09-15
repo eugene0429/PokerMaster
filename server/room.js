@@ -6,6 +6,7 @@ import { makeProfileDealer } from './bot-profiles.js';
 import {
   blindsForLevel, levelForElapsed, maxLevelFor, DEFAULT_STRUCTURE, MODE, RISING_BLINDS,
 } from './blinds.js';
+import { ChatLog } from './chat.js';
 import { snapshotFor } from './view.js';
 
 const DEFAULTS = {
@@ -60,6 +61,7 @@ export class Room {
     this.countdownEndsAt = null;
     this.timers = new Map();
     this.nextProfile = makeProfileDealer();
+    this.chat = new ChatLog();
     this.invite = { urls: [], primary: '', qr: null, hasLan: false };
 
     this.baseBlinds = { sb: DEFAULTS.sb, bb: DEFAULTS.bb };
@@ -75,6 +77,7 @@ export class Room {
   join({ socketId, token, name }) {
     let player = token && this.tokens.has(token) ? this.players.get(this.tokens.get(token)) : null;
 
+    const returning = !!player;
     if (player) {
       player.connected = true;
       player.disconnectedAt = null;
@@ -93,8 +96,12 @@ export class Room {
       this.tokens.set(newToken, id);
     }
 
+    const alreadyOpen = [...this.sockets.values()].includes(player.id);
     this.sockets.set(socketId, player.id);
     if (!this.hostId || !this.players.has(this.hostId)) this.hostId = player.id;
+    if (!alreadyOpen) {
+      this.chat.system(returning ? `${player.name} 님이 돌아왔습니다` : `${player.name} 님이 들어왔습니다`);
+    }
 
     this.transport.send(socketId, 'identity', {
       token: player.token, name: player.name, seat: player.seat,
@@ -115,6 +122,7 @@ export class Room {
     if (!player) return;
     player.connected = false;
     player.disconnectedAt = Date.now();
+    this.chat.system(`${player.name} 님이 나갔습니다`);
 
     if (player.seat === null) {
       this.forget(player);
@@ -136,6 +144,7 @@ export class Room {
   forget(player) {
     this.players.delete(player.id);
     this.tokens.delete(player.token);
+    this.chat.forget(player.id);
     if (this.hostId === player.id) this.reassignHost();
   }
 
@@ -182,7 +191,44 @@ export class Room {
   }
 
   spectatorNames() {
-    return [...this.players.values()].filter((p) => p.seat === null && p.connected).map((p) => p.name);
+    return this.lobbyPlayers().map((p) => p.name);
+  }
+
+  /** Connected, not seated — waiting in the main menu. */
+  lobbyPlayers() {
+    return [...this.players.values()].filter((p) => p.seat === null && p.connected && !p.isBot);
+  }
+
+  lobbyRoster() {
+    return this.lobbyPlayers().map((p) => ({
+      name: p.name, isHost: p.id === this.hostId, id: p.id,
+    }));
+  }
+
+  /** How many bots still fit once everyone waiting has a chair. */
+  get maxBots() {
+    const taken = this.seatedPlayers().length > 0
+      ? this.seatedPlayers().length
+      : this.lobbyPlayers().length;
+    return Math.max(0, this.config.maxSeats - taken);
+  }
+
+  renamePlayer(playerId, name) {
+    const player = this.players.get(playerId);
+    if (!player) throw new IllegalAction('알 수 없는 플레이어입니다');
+    const next = this.uniqueName(sanitizeName(name, player.name), player.id);
+    if (next === player.name) return;
+    this.chat.system(`${player.name} 님이 이름을 ${next} 로 바꿨습니다`);
+    player.name = next;
+    this.publish();
+  }
+
+  postChat(playerId, text) {
+    const player = this.players.get(playerId);
+    if (!player) throw new IllegalAction('알 수 없는 플레이어입니다');
+    const result = this.chat.post(player, text);
+    if (!result.ok) throw new IllegalAction(result.reason);
+    this.publish();
   }
 
   sitDown(playerId, seat, name) {
@@ -197,13 +243,17 @@ export class Room {
     }
 
     if (name) player.name = this.uniqueName(sanitizeName(name, player.name), player.id);
+    this.seatPlayerAt(player, seat);
+    this.maybeStartHand();
+    this.publish();
+  }
+
+  seatPlayerAt(player, seat) {
     player.seat = seat;
     player.stack = this.config.startingStack;
     player.sittingOut = false;
     player.timeouts = 0;
     player.rebuysUsed = 0;
-    this.maybeStartHand();
-    this.publish();
   }
 
   standUp(playerId, { force = false } = {}) {
@@ -347,30 +397,38 @@ export class Room {
   }
 
   /**
-   * The main menu's "게임 입장": settings, a seat and the bots in one step.
-   * Only works while the table is still empty, so two people pressing it at
-   * the same moment cannot both open a table — the server decides, not the UI.
+   * The host pressing 게임 시작: settings, a chair for everyone waiting in the
+   * lobby, and the bots — in one step, so the table starts together rather
+   * than filling up one person at a time.
    */
   startTable(playerId, opts = {}) {
     const player = this.players.get(playerId);
     if (!player) throw new IllegalAction('알 수 없는 플레이어입니다');
     if (this.seatedPlayers().length > 0) throw new IllegalAction('이미 열린 테이블이 있습니다');
+    if (!this.isHost(playerId)) throw new IllegalAction('호스트만 게임을 시작할 수 있습니다');
 
-    this.hostId = playerId;
     this.applyConfig(opts);
     this.baseBlinds = { sb: this.config.sb, bb: this.config.bb };
     this.level = 0;
     this.eliminated = [];
     this.results = null;
 
-    const seat = Number.isInteger(opts.seat) ? opts.seat : 0;
-    this.sitDown(playerId, seat, opts.name);
+    if (opts.name) player.name = this.uniqueName(sanitizeName(opts.name, player.name), player.id);
 
-    const bots = clampInt(opts.bots, 0, this.config.maxSeats - 1, 0);
-    for (let i = 0; i < bots; i++) {
-      if (this.firstFreeSeat() === null) break;
-      this.addBot(playerId);
+    // The host takes the first chair, then everyone else in the order they arrived.
+    const waiting = [player, ...this.lobbyPlayers().filter((p) => p.id !== playerId)];
+    let seat = 0;
+    for (const p of waiting) {
+      if (seat >= this.config.maxSeats) break;
+      this.seatPlayerAt(p, seat++);
     }
+
+    const room = this.config.maxSeats - seat;
+    const bots = clampInt(opts.bots, 0, room, 0);
+    for (let i = 0; i < bots; i++) this.addBot(playerId);
+
+    this.chat.system(`게임 시작 — ${waiting.length}명 + 봇 ${bots}명`);
+    this.maybeStartHand();
     this.publish();
   }
 
@@ -393,6 +451,7 @@ export class Room {
     this.turnEndsAt = null;
     this.countdownEndsAt = null;
     this.config = { ...this.config, sb: this.baseBlinds.sb, bb: this.baseBlinds.bb };
+    this.chat.system('게임이 끝났습니다 — 메인 메뉴로 돌아갑니다');
     this.publish();
   }
 

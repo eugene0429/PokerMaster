@@ -70,6 +70,9 @@ export function snapshotFor(room, playerId) {
     deadline: room.turnEndsAt,
     countdownEndsAt: room.countdownEndsAt,
     spectators: room.spectatorNames(),
+    lobby: room.lobbyRoster(),
+    maxBots: room.maxBots,
+    chat: room.chat.recent(),
     game: gameState(room),
   };
 }

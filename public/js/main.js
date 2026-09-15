@@ -5,6 +5,7 @@ import {
 import { initAnim, flyChips, localCenter, percentToLocal, sparkle } from './anim.js';
 import { formatChips } from './chips.js';
 import { setFourColor } from './cards.js';
+import { renderChat, bindChatForm } from './chat.js';
 import * as menu from './menu.js';
 import { MODE_LABEL } from './menu.js';
 import * as sound from './sound.js';
@@ -45,6 +46,8 @@ menu.initMenu({
   },
   onWatch: () => toast('관전 중입니다 — 빈 자리를 누르면 앉을 수 있습니다'),
   onInvite: openInvite,
+  onChat: (text) => net?.send('chat', { text }),
+  onRename: (name) => { saveName(name); net?.send('rename', { name }); },
 });
 menu.setName(savedName());
 
@@ -80,6 +83,7 @@ function handleUpdate({ snapshot: next, events }) {
 
   if (snapshot.you?.seated) menu.hide();
   else menu.updateMenu(snapshot);
+  paintTableChat(snapshot);
 
   if (!first) {
     runEffects(events, before);
@@ -310,6 +314,48 @@ function button(kind, label, sub, onClick) {
 function send(type, amount) {
   raiseValue = null;
   net.send('action', { type, amount });
+}
+
+/* ------------------------ chat at the table ------------------------ */
+
+let chatOpen = false;
+let unread = 0;
+
+bindChatForm($('gameChatForm'), $('gameChatInput'), (text) => net?.send('chat', { text }));
+
+$('chatToggle').addEventListener('click', () => {
+  chatOpen = !chatOpen;
+  $('chatPanel').hidden = !chatOpen;
+  if (chatOpen) {
+    unread = 0;
+    paintBadge();
+    // While hidden the list has no height, so autoscroll could not run.
+    const list = $('gameChatList');
+    list.scrollTop = list.scrollHeight;
+    $('gameChatInput').focus();
+  }
+});
+
+function paintBadge() {
+  $('chatBadge').hidden = unread === 0;
+  $('chatBadge').textContent = unread > 99 ? '99+' : String(unread);
+}
+
+function paintTableChat(s) {
+  // The menu has its own chat panel; two of them on screen would be noise.
+  const menuVisible = !$('menu').hidden;
+  $('tableChat').hidden = menuVisible;
+  if (menuVisible) return;
+
+  const list = $('gameChatList');
+  const firstPaint = !list.dataset.lastId;
+  const added = renderChat(list, s.chat ?? [], s.you?.name);
+
+  // A full history on the first paint is not "unread".
+  if (!firstPaint && added > 0 && !chatOpen) {
+    unread += added;
+    paintBadge();
+  }
 }
 
 /* --------------------------- game clock ---------------------------- */

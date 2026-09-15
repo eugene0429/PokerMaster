@@ -203,10 +203,11 @@ describe('leaving a tournament early', () => {
     const room = makeRoom();
     const host = room.join({ socketId: 's1', name: 'Host' });
     const guest = room.join({ socketId: 's2', name: 'Guest' });
+    // Starting seats the whole lobby, so the guest is already in.
     room.startTable(host.id, {
-      name: 'Host', seat: 0, bots: 2, mode: MODE.TOURNAMENT, startingStack: 1000,
+      name: 'Host', bots: 2, mode: MODE.TOURNAMENT, startingStack: 1000,
     });
-    room.sitDown(guest.id, 5);
+    expect(guest.seat).not.toBeNull();
     room.startedAt = Date.now();
 
     room.standUp(guest.id);
@@ -221,8 +222,7 @@ describe('leaving a tournament early', () => {
     const room = makeRoom();
     const host = room.join({ socketId: 's1', name: 'Host' });
     const guest = room.join({ socketId: 's2', name: 'Guest' });
-    room.startTable(host.id, { name: 'Host', seat: 0, bots: 1, mode: MODE.CASH });
-    room.sitDown(guest.id, 5);
+    room.startTable(host.id, { name: 'Host', bots: 1, mode: MODE.CASH });
     room.standUp(guest.id);
     expect(room.eliminated).toHaveLength(0);
   });
@@ -377,8 +377,8 @@ describe('starting over', () => {
     const room = makeRoom();
     const host = room.join({ socketId: 's1', name: 'Host' });
     const guest = room.join({ socketId: 's2', name: 'Guest' });
-    room.startTable(host.id, { name: 'Host', seat: 0, bots: 3, mode: MODE.TOURNAMENT });
-    room.sitDown(guest.id, 5);
+    room.startTable(host.id, { name: 'Host', bots: 3, mode: MODE.TOURNAMENT });
+    expect(guest.seat).not.toBeNull();
     room.level = 4;
     room.startedAt = Date.now() - 40 * MINUTE;
 
@@ -501,7 +501,7 @@ describe('rebuys', () => {
   it('gives a new player at the same seat a fresh allowance', () => {
     const room = makeRoom();
     const host = room.join({ socketId: 's1', name: 'Host' });
-    room.startTable(host.id, { name: 'Host', seat: 0, bots: 1, mode: MODE.CASH, rebuys: 1 });
+    room.startTable(host.id, { name: 'Host', bots: 1, mode: MODE.CASH, rebuys: 1 });
     const guest = room.join({ socketId: 's2', name: 'Guest' });
     room.sitDown(guest.id, 4);
     guest.rebuysUsed = 1;

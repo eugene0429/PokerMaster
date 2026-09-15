@@ -47,6 +47,8 @@ io.on('connection', (socket) => {
   socket.on('addBot', guard((id, { seat } = {}) => room.addBot(id, seat ?? null)));
   socket.on('kick', guard((id, { seat }) => room.kick(id, Number(seat))));
   socket.on('reset', guard((id) => room.resetTable(id)));
+  socket.on('chat', guard((id, { text }) => room.postChat(id, text)));
+  socket.on('rename', guard((id, { name }) => room.renamePlayer(id, name)));
   socket.on('config', guard((id, patch) => room.updateConfig(id, patch)));
   socket.on('action', guard((id, action) => room.act(id, action)));
 

@@ -62,15 +62,23 @@ function client(name) {
  * the lobby and the host's start seats everybody at once.
  */
 async function twoPlayerTable(hostName, guestName) {
+  // Whoever's socket lands first becomes the host, and two sockets opened at
+  // once do not arrive in the order they were created. Let the host settle in
+  // before the guest knocks.
   const host = client(hostName);
+  await host.ready;
   const guest = client(guestName);
-  await Promise.all([host.ready, guest.ready]);
+  await guest.ready;
   await waitFor(() => host.snapshot?.lobby?.length === 2);
 
   host.send('startTable', { name: hostName, bots: 0, mode: 'cash' });
   // Beware `x !== null` on an optional chain: it is true while the snapshot is
   // still undefined, and the wait passes before anything has happened.
-  await waitFor(() => !!host.snapshot?.seats?.[0] && !!host.snapshot?.seats?.[1]);
+  await waitFor(() => !!host.snapshot?.seats?.[0] && !!host.snapshot?.seats?.[1])
+    .catch(() => {
+      // Say what the server actually objected to, instead of just "timed out".
+      throw new Error(`table never opened; server said: ${host.errors.join(' / ') || '(nothing)'}`);
+    });
 
   return { host, guest, hostSeat: 0, guestSeat: 1 };
 }

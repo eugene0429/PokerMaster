@@ -27,6 +27,7 @@ let lastHandId = null;
 let lastPhase = null;
 let resultsKey = null;
 let pendingAwards = [];
+let pendingBustOuts = [];
 let actionPending = false;
 
 /** The table lags the server on purpose; this owns how far behind it is. */
@@ -42,7 +43,11 @@ function onRevealStep(step) {
   renderDock(snapshot);
 
   if (step === 'board' || step === 'tabled') sound.play('flip');
-  if (step === 'settled') playAwards(potAt);
+  if (step === 'settled') {
+    playAwards(potAt);
+    announceBustOuts(pendingBustOuts, snapshot.you?.seat ?? null);
+    pendingBustOuts = [];
+  }
   if (step === 'results') paintResults(snapshot, true);
 }
 
@@ -109,6 +114,7 @@ function handleUpdate({ snapshot: next, events }) {
   if (next.hand && next.hand.handId !== lastHandId) {
     lastHandId = next.hand.handId;
     pendingAwards = [];
+    pendingBustOuts = [];
     if (!events.some((e) => e.type === 'handStart')) resetDecor();
   }
 
@@ -128,7 +134,10 @@ function handleUpdate({ snapshot: next, events }) {
   if (!first) {
     runEffects(events, before);
     playSounds(events);
-    announceBustOuts(events, snapshot.you?.seat ?? null);
+    // Held until the reveal settles — see onRevealStep.
+    for (const e of events) {
+      if (e.type === 'rebuy' || e.type === 'knockOut') pendingBustOuts.push(e);
+    }
   }
 
   paintClock();

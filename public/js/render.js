@@ -322,9 +322,13 @@ function paintSeatCards(box, data, cards, tableRect, pos) {
   });
 }
 
+// Busting out and rebuying are results; showing them early gives the hand away.
+const SETTLED_ONLY = new Set(['out', 'rebuy']);
+
 function paintSeatTag(el, data, reveal) {
   const win = reveal.settled ? decor.winners.get(data.seat) : null;
-  const tag = win ? { text: `+${formatChips(win)}`, kind: 'win' } : decor.actions.get(data.seat);
+  let tag = win ? { text: `+${formatChips(win)}`, kind: 'win' } : decor.actions.get(data.seat);
+  if (tag && SETTLED_ONLY.has(tag.kind) && !reveal.settled) tag = null;
   let node = el.querySelector('.seat-tag');
 
   if (!tag) { node?.remove(); return; }

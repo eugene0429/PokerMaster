@@ -295,6 +295,8 @@ export class Room {
     player.leaveAfterHand = false;
     player.sittingOut = false;
     player.timeouts = 0;
+    player.bustedOut = false;
+    player.pendingRebuy = false;
   }
 
   setSittingOut(playerId, value) {
@@ -484,7 +486,8 @@ export class Room {
   /* -------------------------- hand lifecycle ------------------------ */
 
   readyPlayers() {
-    return this.seatedPlayers().filter((p) => !p.sittingOut && (p.connected || p.isBot));
+    return this.seatedPlayers()
+      .filter((p) => !p.sittingOut && !p.bustedOut && (p.connected || p.isBot));
   }
 
   maybeStartHand() {
@@ -506,6 +509,7 @@ export class Room {
   beginHand() {
     this.countdownEndsAt = null;
     if (this.finished) return;
+    this.clearFinishedPlayers();
 
     if (this.startedAt === null) this.startedAt = Date.now();
     if (this.config.mode === MODE.TIMED && this.endsAt === null) {
@@ -645,11 +649,7 @@ export class Room {
       if (hp) p.stack = hp.stack;
     }
     for (const p of [...this.players.values()]) {
-      if (p.leaveAfterHand) {
-        this.recordExit(p);
-        this.unseat(p);
-        if (p.isBot) { this.players.delete(p.id); this.tokens.delete(p.token); }
-      }
+      if (p.leaveAfterHand) this.recordExit(p);
     }
 
     this.publish(this.handleBustedPlayers());
@@ -671,32 +671,51 @@ export class Room {
    * A dead stack either buys back in or leaves — the same rule in every mode.
    * Bots get no exemption. With unlimited rebuys nobody ever leaves, which is
    * what makes a cash table endless.
+   *
+   * This decides; it does not clear the chair. Emptying seats here would make
+   * the losers vanish while the table is still turning the cards over, so they
+   * keep their seat until the next hand is dealt (`clearFinishedPlayers`).
    */
   handleBustedPlayers() {
     const events = [];
     const busted = this.seatedPlayers()
-      .filter((p) => p.stack <= 0)
+      .filter((p) => p.stack <= 0 && !p.bustedOut)
       .sort((a, b) => a.seat - b.seat);
 
     for (const p of busted) {
       if (this.rebuysLeft(p) > 0) {
         p.rebuysUsed = (p.rebuysUsed ?? 0) + 1;
-        p.stack = this.config.startingStack;
+        p.pendingRebuy = true;
         events.push({
           type: 'rebuy', seat: p.seat, name: p.name,
-          stack: p.stack, used: p.rebuysUsed,
+          stack: this.config.startingStack, used: p.rebuysUsed,
           remaining: this.rebuysAreUnlimited ? null : this.rebuysLeft(p),
         });
         continue;
       }
+      p.bustedOut = true;
       this.eliminated.push({
         id: p.id, name: p.name, isBot: p.isBot, rebuysUsed: p.rebuysUsed ?? 0,
       });
       events.push({ type: 'knockOut', seat: p.seat, name: p.name });
+    }
+    return events;
+  }
+
+  /**
+   * Clear out last hand's casualties. Runs as the next hand is dealt, which is
+   * the first moment nobody is still looking at the finished one.
+   */
+  clearFinishedPlayers() {
+    for (const p of [...this.players.values()]) {
+      if (p.pendingRebuy) {
+        p.pendingRebuy = false;
+        p.stack = this.config.startingStack;
+      }
+      if (!p.bustedOut && !p.leaveAfterHand) continue;
       this.unseat(p);
       if (p.isBot) { this.players.delete(p.id); this.tokens.delete(p.token); }
     }
-    return events;
   }
 
   checkForGameOver() {
@@ -721,7 +740,7 @@ export class Room {
 
     // Survivors ranked by chips, then everyone knocked out, latest first.
     const survivors = this.seatedPlayers()
-      .slice()
+      .filter((p) => !p.bustedOut)
       .sort((a, b) => b.stack - a.stack)
       .map((p) => ({ name: p.name, isBot: p.isBot, stack: p.stack, rebuysUsed: p.rebuysUsed ?? 0 }));
     const knockedOut = [...this.eliminated].reverse()

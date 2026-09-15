@@ -150,6 +150,13 @@ describe('raising the blinds', () => {
   });
 });
 
+/** The hand ends, then the next one is dealt — two moments, not one. */
+function settleAndDeal(room) {
+  const events = room.handleBustedPlayers();
+  room.clearFinishedPlayers();
+  return events;
+}
+
 describe('knocking players out', () => {
   function seatedRoom(mode, rebuys = 0) {
     const room = makeRoom();
@@ -162,12 +169,32 @@ describe('knocking players out', () => {
     const { room } = seatedRoom(MODE.TOURNAMENT);
     const [a, b] = room.seatedPlayers().filter((p) => p.isBot);
     a.stack = 0;
-    room.handleBustedPlayers();
+    settleAndDeal(room);
     b.stack = 0;
-    room.handleBustedPlayers();
+    settleAndDeal(room);
 
     expect(room.eliminated.map((p) => p.name)).toEqual([a.name, b.name]);
     expect(room.seatedPlayers()).toHaveLength(2);
+  });
+
+  it('leaves the losers in their seats until the next hand is dealt', () => {
+    const { room } = seatedRoom(MODE.TOURNAMENT);
+    const bots = room.seatedPlayers().filter((p) => p.isBot);
+    const seats = bots.slice(0, 2).map((b) => b.seat);
+    for (const b of bots.slice(0, 2)) b.stack = 0;
+
+    // The hand is over, but the table is still turning cards over.
+    room.handleBustedPlayers();
+    for (const seat of seats) {
+      expect(room.playerAtSeat(seat)).not.toBeNull();
+      expect(room.playerAtSeat(seat).stack).toBe(0);
+    }
+    expect(room.eliminated).toHaveLength(2);
+    expect(room.readyPlayers().some((p) => seats.includes(p.seat))).toBe(false);
+
+    // Only now do the chairs empty.
+    room.clearFinishedPlayers();
+    for (const seat of seats) expect(room.playerAtSeat(seat)).toBeNull();
   });
 
   it('ranks the survivors by chips and the rest in reverse knockout order', () => {
@@ -175,8 +202,8 @@ describe('knocking players out', () => {
     const bots = room.seatedPlayers().filter((p) => p.isBot);
     room.startedAt = Date.now();
 
-    bots[0].stack = 0; room.handleBustedPlayers();
-    bots[1].stack = 0; room.handleBustedPlayers();
+    bots[0].stack = 0; settleAndDeal(room);
+    bots[1].stack = 0; settleAndDeal(room);
     host.stack = 2500;
     bots[2].stack = 1500;
 
@@ -193,7 +220,9 @@ describe('knocking players out', () => {
     const bot = room.seatedPlayers().find((p) => p.isBot);
     bot.stack = 0;
     room.handleBustedPlayers();
-    expect(bot.stack).toBe(1000);
+    expect(bot.stack).toBe(0);         // still busted while the hand is shown
+    room.clearFinishedPlayers();
+    expect(bot.stack).toBe(1000);      // bought back in for the next hand
     expect(room.eliminated).toHaveLength(0);
   });
 });
@@ -236,7 +265,7 @@ describe('leaving a tournament early', () => {
     const seat = bot.seat;
 
     bot.stack = 0;
-    room.handleBustedPlayers();
+    settleAndDeal(room);
     expect(room.eliminated).toHaveLength(1);
     expect(room.playerAtSeat(seat)).toBeNull();
   });
@@ -410,7 +439,7 @@ describe('rebuys', () => {
 
     for (let i = 1; i <= 2; i++) {
       bot.stack = 0;
-      const events = room.handleBustedPlayers();
+      const events = settleAndDeal(room);
       expect(events.find((e) => e.type === 'rebuy')).toMatchObject({ used: i, remaining: 2 - i });
       expect(bot.stack).toBe(1000);
       expect(room.playerAtSeat(bot.seat)).toBe(bot);
@@ -419,7 +448,7 @@ describe('rebuys', () => {
     // Third bust: no allowance left, so they are out.
     const seat = bot.seat;
     bot.stack = 0;
-    const events = room.handleBustedPlayers();
+    const events = settleAndDeal(room);
     expect(events.find((e) => e.type === 'knockOut')).toBeTruthy();
     expect(room.playerAtSeat(seat)).toBeNull();
     expect(room.eliminated.map((p) => p.name)).toContain(bot.name);
@@ -430,7 +459,7 @@ describe('rebuys', () => {
     const bot = room.seatedPlayers().find((p) => p.isBot);
     const seat = bot.seat;
     bot.stack = 0;
-    room.handleBustedPlayers();
+    settleAndDeal(room);
     expect(room.playerAtSeat(seat)).toBeNull();
   });
 
@@ -439,7 +468,7 @@ describe('rebuys', () => {
     const bot = room.seatedPlayers().find((p) => p.isBot);
     for (let i = 0; i < 25; i++) {
       bot.stack = 0;
-      room.handleBustedPlayers();
+      settleAndDeal(room);
     }
     expect(bot.stack).toBe(1000);
     expect(room.eliminated).toHaveLength(0);
@@ -452,7 +481,7 @@ describe('rebuys', () => {
 
     host.stack = 0;
     bot.stack = 0;
-    room.handleBustedPlayers();
+    settleAndDeal(room);
     expect(host.stack).toBe(1000);
     expect(bot.stack).toBe(1000);
 
@@ -460,7 +489,7 @@ describe('rebuys', () => {
     const hostSeat = host.seat;
     host.stack = 0;
     bot.stack = 0;
-    room.handleBustedPlayers();
+    settleAndDeal(room);
     expect(room.playerAtSeat(hostSeat)).toBeNull();
     expect(room.playerAtSeat(botSeat)).toBeNull();
   });
@@ -470,7 +499,7 @@ describe('rebuys', () => {
     room.config = { ...room.config, sb: 400, bb: 800 };   // blinds climbed
     const bot = room.seatedPlayers().find((p) => p.isBot);
     bot.stack = 0;
-    room.handleBustedPlayers();
+    settleAndDeal(room);
     expect(bot.stack).toBe(room.config.startingStack);
   });
 
@@ -479,7 +508,7 @@ describe('rebuys', () => {
     const bot = room.seatedPlayers().find((p) => p.isBot);
     bot.stack = 0;
     room.handleBustedPlayers();
-    expect(room.checkForGameOver()).toBe(true);
+    expect(room.checkForGameOver()).toBe(true);   // decided before the seat clears
     expect(room.results.reason).toBe('최후의 1인');
   });
 
@@ -487,9 +516,9 @@ describe('rebuys', () => {
     const { room, host } = table({ rebuys: 1 });
     const bot = room.seatedPlayers().find((p) => p.isBot);
     bot.stack = 0;
-    room.handleBustedPlayers();        // bot rebuys once
+    settleAndDeal(room);               // bot rebuys once
     bot.stack = 0;
-    room.handleBustedPlayers();        // and is out
+    settleAndDeal(room);               // and is out
     host.stack = 3000;
 
     room.finish('최후의 1인');

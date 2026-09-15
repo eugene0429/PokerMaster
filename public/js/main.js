@@ -1,6 +1,6 @@
 import { connect, savedName, saveName } from './net.js';
 import {
-  initRender, paint, noteEvents, resetDecor, seatPercent, betPercent,
+  initRender, paint, noteEvents, resetDecor, seatPercent, betPercent, displayStack,
 } from './render.js';
 import { initAnim, flyChips, localCenter, percentToLocal, sparkle } from './anim.js';
 import { formatChips } from './chips.js';
@@ -27,6 +27,7 @@ let lastHandId = null;
 let lastPhase = null;
 let resultsKey = null;
 let pendingAwards = [];
+let actionPending = false;
 
 /** The table lags the server on purpose; this owns how far behind it is. */
 const reveal = createReveal(onRevealStep);
@@ -89,7 +90,11 @@ $('btnSound').textContent = sound.isMuted() ? '✕' : '♪';
 net = connect({
   onUpdate: handleUpdate,
   onIdentity: (p) => { invite = p.invite ?? null; paintInvite(); },
-  onError: (message) => toast(message, 'error'),
+  onError: (message) => {
+    actionPending = false;          // the action bounced; let them try again
+    toast(message, 'error');
+    if (snapshot) renderDock(snapshot);
+  },
   onStatus: (s) => {
     if (s === 'disconnected') toast('연결이 끊겼습니다 — 다시 연결하는 중…', 'error');
   },
@@ -106,6 +111,9 @@ function handleUpdate({ snapshot: next, events }) {
     pendingAwards = [];
     if (!events.some((e) => e.type === 'handStart')) resetDecor();
   }
+
+  // The turn has moved on (or never was ours), so the buttons are free again.
+  if (!next.toAct) actionPending = false;
 
   noteEvents(events);
   snapshot = next;
@@ -210,7 +218,7 @@ function renderDock(s) {
   refs.heroStrip.innerHTML = '';
   if (hero?.seated) {
     addStrip(`${hero.name}`, '');
-    addStrip('스택', formatChips(s.seats[hero.seat]?.stack ?? hero.stack));
+    addStrip('스택', formatChips(displayStack(s, reveal.view(), hero.seat)));
     if (s.hand) addStrip('팟', formatChips(s.hand.potTotal));
     const left = s.seats[hero.seat]?.rebuysLeft;
     if (left !== null && left !== undefined) addStrip('리바이', `${left}회 남음`);
@@ -267,13 +275,14 @@ function dockNote(s) {
 function renderActionButtons(s, act) {
   const pot = s.hand.potTotal;
   refs.actions.innerHTML = '';
+  const locked = actionPending;
 
-  refs.actions.appendChild(button('fold', '폴드', '', () => send('fold')));
+  refs.actions.appendChild(button('fold', '폴드', '', () => send('fold'), locked));
 
   if (act.canCheck) {
-    refs.actions.appendChild(button('check', '체크', '', () => send('check')));
+    refs.actions.appendChild(button('check', '체크', '', () => send('check'), locked));
   } else {
-    refs.actions.appendChild(button('call', '콜', formatChips(act.toCall), () => send('call')));
+    refs.actions.appendChild(button('call', '콜', formatChips(act.toCall), () => send('call'), locked));
   }
 
   if (!act.canRaise) return;
@@ -300,6 +309,7 @@ function renderActionButtons(s, act) {
   slider.min = String(min);
   slider.max = String(max);
   slider.step = String(Math.max(1, Math.round(s.config.bb / 2)));
+  slider.disabled = locked;
 
   const sync = () => {
     slider.value = String(raiseValue);
@@ -315,6 +325,7 @@ function renderActionButtons(s, act) {
     b.type = 'button';
     b.className = 'quick-btn';
     b.textContent = label;
+    b.disabled = locked;
     b.addEventListener('click', () => {
       const target = fraction === null ? max : s.hand.currentBet + Math.round(pot * fraction);
       raiseValue = Math.min(max, Math.max(min, target));
@@ -324,25 +335,33 @@ function renderActionButtons(s, act) {
   }
 
   const raiseBtn = button('raise', act.isBet ? '벳' : '레이즈', formatChips(raiseValue),
-    () => send('raise', raiseValue));
+    () => send('raise', raiseValue), locked);
 
   panel.append(top, slider);
   refs.actions.append(panel, raiseBtn);
   sync();
 }
 
-function button(kind, label, sub, onClick) {
+function button(kind, label, sub, onClick, locked = false) {
   const b = document.createElement('button');
   b.type = 'button';
   b.className = `act-btn ${kind}`;
+  b.disabled = locked;
   b.innerHTML = `${label}<small>${sub}</small>`;
   b.addEventListener('click', () => { sound.unlock(); onClick(); });
   return b;
 }
 
+/**
+ * One press, one action. Between the click and the server's reply the buttons
+ * would otherwise still be live, and a second press lands out of turn.
+ */
 function send(type, amount) {
+  if (actionPending) return;
+  actionPending = true;
   raiseValue = null;
   net.send('action', { type, amount });
+  if (snapshot) renderDock(snapshot);
 }
 
 /* ------------------------ chat at the table ------------------------ */
@@ -525,7 +544,7 @@ $('btnCopyUrl').addEventListener('click', async () => {
 document.addEventListener('keydown', (e) => {
   if (e.target.tagName === 'INPUT') return;
   const act = snapshot?.toAct;
-  if (!act) return;
+  if (!act || actionPending) return;
   const key = e.key.toLowerCase();
   if (key === 'f') send('fold');
   if (key === 'c') send(act.canCheck ? 'check' : 'call');

@@ -156,6 +156,21 @@ function isTabled(reveal, seat) {
   return reveal.tabled === null || reveal.tabled.has(seat);
 }
 
+/**
+ * The snapshot has already paid the winner — the server settled the hand the
+ * moment it ended. On screen the pot has not moved yet, so hold that money
+ * back until it does, or the chips appear in two places at once.
+ */
+export function displayStack(snapshot, reveal, seat) {
+  const data = snapshot.seats?.[seat];
+  if (!data) return 0;
+  if (!snapshot.hand?.complete || reveal.settled) return data.stack;
+
+  const awards = snapshot.hand.results?.awards ?? [];
+  const pending = awards.reduce((sum, a) => (a.seat === seat ? sum + a.amount : sum), 0);
+  return Math.max(0, data.stack - pending);
+}
+
 function paintSeats(snapshot, tableRect, reveal) {
   const wanted = new Set();
 
@@ -244,9 +259,10 @@ function renderOccupiedSeat(el, data, snapshot, tableRect, pos, reveal) {
     acting ? 'acting' : '',
   ].filter(Boolean).join(' ');
 
+  const stack = displayStack(snapshot, reveal, data.seat);
   el.querySelector('.seat-name').textContent = data.name;
   el.querySelector('.seat-stack').textContent =
-    data.stack > 0 ? formatChips(data.stack) : (data.inHand ? 'ALL IN' : '—');
+    stack > 0 ? formatChips(stack) : (data.inHand ? 'ALL IN' : '—');
   el.querySelector('.seat-state').textContent = seatState(data);
 
   // The host can clear any seat — a bot, or a friend who stopped answering.

@@ -562,8 +562,14 @@ input { font: inherit; }
   background: linear-gradient(180deg, rgba(42, 50, 63, .95), rgba(24, 29, 38, .95));
   transition: transform .12s, filter .15s, box-shadow .15s;
 }
-.act-btn:hover { filter: brightness(1.18); }
-.act-btn:active { transform: translateY(1px); }
+.act-btn:hover:not(:disabled) { filter: brightness(1.18); }
+.act-btn:active:not(:disabled) { transform: translateY(1px); }
+.act-btn:disabled, .quick-btn:disabled {
+  opacity: .4;
+  cursor: default;
+  filter: none;
+}
+input[type=range]:disabled { opacity: .4; cursor: default; }
 .act-btn.fold { background: linear-gradient(180deg, #4a2b2b, #2c1a1a); border-color: rgba(226, 84, 74, .35); }
 .act-btn.call { background: linear-gradient(180deg, #1d4a63, #12303f); border-color: rgba(143, 216, 255, .3); }
 .act-btn.raise { background: linear-gradient(180deg, #7a5a18, #4a3510); border-color: rgba(216, 179, 94, .45); }

@@ -600,9 +600,15 @@ export class Room {
     if (!this.hand || this.hand.complete || this.hand.currentSeat !== seat) return;
     const legal = legalActions(this.hand, seat);
     const bot = this.playerAtSeat(seat);
+    // One scratchpad per bot per hand, so a bluff can carry across streets.
+    if (bot && (!bot.memory || bot.memory.handId !== this.hand.handId)) {
+      bot.memory = { handId: this.hand.handId, streets: [] };
+    }
     let action;
     try {
-      action = decideBotAction(this.hand, seat, legal, { profile: bot?.profile });
+      action = decideBotAction(this.hand, seat, legal, {
+        profile: bot?.profile, memory: bot?.memory,
+      });
     } catch {
       action = legal.canCheck ? { type: ACTION.CHECK } : { type: ACTION.FOLD };
     }

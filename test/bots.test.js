@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { startHand, applyAction, legalActions } from '../engine/table.js';
-import { decideBotAction, preflopStrength, lateness } from '../server/bots.js';
+import {
+  decideBotAction, preflopStrength, lateness, boardTexture, liveOpponents,
+  postflopStrength, drawEquity,
+} from '../server/bots.js';
 import { PROFILE_BY_KEY, PROFILES, makeProfileDealer } from '../server/bot-profiles.js';
 import { parseCards, createDeck, shuffle } from '../engine/deck.js';
 import { ACTION } from '../engine/constants.js';
@@ -109,6 +112,121 @@ describe('profile dealing', () => {
     const next = makeProfileDealer(seeded(3));
     const keys = Array.from({ length: PROFILES.length }, () => next().key);
     expect(new Set(keys).size).toBe(PROFILES.length);
+  });
+});
+
+describe('reading the table before bluffing', () => {
+  it('counts the opponents still in the hand', () => {
+    const { state } = startHand({ seats: seats(5), buttonSeat: 0, blinds: BLINDS });
+    expect(liveOpponents(state, 0)).toBe(4);
+    state.players[2].folded = true;
+    expect(liveOpponents(state, 0)).toBe(3);
+  });
+
+  it('rates an ace-high or paired board as a better place to tell a story', () => {
+    const plain = boardTexture(parseCards('9c 7d 2h'));
+    expect(boardTexture(parseCards('Ac 7d 2h'))).toBeGreaterThan(plain);
+    expect(boardTexture(parseCards('9c 9d 2h'))).toBeGreaterThan(plain);
+  });
+
+  it('rates three to a flush as a worse one, because people call with draws', () => {
+    expect(boardTexture(parseCards('9h 7h 2h')))
+      .toBeLessThan(boardTexture(parseCards('9c 7d 2h')));
+  });
+
+  it('treats an empty board as neutral', () => {
+    expect(boardTexture([])).toBe(1);
+  });
+});
+
+describe('bluffing', () => {
+  /**
+   * Walk real hands and count what the bot does with nothing. Returns the rate
+   * at which it raises into a bet — a pure bluff, since the hand cannot win.
+   */
+  function bluffRaiseRate({ profileKey, seatCount, samples = 900, seed = 31 }) {
+    const rand = seeded(seed);
+    const profile = PROFILE_BY_KEY[profileKey];
+    let spots = 0;
+    let raises = 0;
+
+    for (let i = 0; i < samples && spots < 400; i++) {
+      let { state } = startHand({ seats: seats(seatCount), buttonSeat: 0, blinds: BLINDS });
+      let guard = 0;
+      while (!state.complete && guard++ < 200) {
+        const seat = state.currentSeat;
+        const legal = legalActions(state, seat);
+        const player = state.players[seat];
+        const memory = { handId: i, streets: [] };
+        const action = decideBotAction(state, seat, legal, { profile, rand, memory });
+
+        if (state.board.length > 0 && !legal.canCheck) {
+          const made = postflopStrength(player.cards, state.board);
+          const equity = Math.min(1, made + drawEquity(player.cards, state.board) * profile.chase);
+          if (equity < 0.3) {
+            spots++;
+            if (action.type === ACTION.RAISE) raises++;
+          }
+        }
+        ({ state } = applyAction(state, { seat, type: action.type, amount: action.amount }));
+      }
+    }
+    return spots ? (raises / spots) * 100 : 0;
+  }
+
+  it('raises with nothing sometimes — the check-raise bluff', () => {
+    expect(bluffRaiseRate({ profileKey: 'maniac', seatCount: 2 })).toBeGreaterThan(5);
+    expect(bluffRaiseRate({ profileKey: 'lag', seatCount: 2 })).toBeGreaterThan(3);
+  });
+
+  it('almost never tries it against a crowded pot', () => {
+    const headsUp = bluffRaiseRate({ profileKey: 'maniac', seatCount: 2 });
+    const crowded = bluffRaiseRate({ profileKey: 'maniac', seatCount: 6 });
+    expect(crowded).toBeLessThan(headsUp);
+  });
+
+  it('keeps the tightest profiles out of it', () => {
+    expect(bluffRaiseRate({ profileKey: 'station', seatCount: 2 })).toBeLessThan(8);
+  });
+
+  it('follows through on the next street after betting this one', () => {
+    // Same spot, same dice — the only difference is whether it bet the flop.
+    const profile = PROFILE_BY_KEY.lag;
+    const fresh = { handId: 1, streets: [] };
+    const continuing = { handId: 1, streets: ['flop'] };
+
+    let firedFresh = 0;
+    let firedContinuing = 0;
+    let spots = 0;
+
+    for (let i = 0; i < 400; i++) {
+      const { state } = startHand({ seats: seats(2), buttonSeat: 0, blinds: BLINDS });
+      // Put the hand on the turn with the betting reopened, so checking is legal.
+      state.board = parseCards('Ac 8d 3h 2s');
+      state.street = 'turn';
+      state.currentBet = 0;
+      for (const p of state.players) {
+        if (!p) continue;
+        p.streetCommitted = 0;
+        p.hasActed = false;
+        p.canRaise = true;
+      }
+
+      const legal = legalActions(state, state.currentSeat);
+      if (!legal.canCheck) continue;
+      spots++;
+
+      const a = decideBotAction(state, state.currentSeat, legal,
+        { profile, rand: seeded(100 + i), memory: { ...fresh, streets: [] } });
+      const b = decideBotAction(state, state.currentSeat, legal,
+        { profile, rand: seeded(100 + i), memory: { ...continuing, streets: ['flop'] } });
+
+      if (a.type === ACTION.RAISE) firedFresh++;
+      if (b.type === ACTION.RAISE) firedContinuing++;
+    }
+
+    expect(spots).toBeGreaterThan(100);
+    expect(firedContinuing).toBeGreaterThan(firedFresh);
   });
 });
 

@@ -6,6 +6,7 @@ import { initAnim, flyChips, localCenter, percentToLocal, sparkle } from './anim
 import { formatChips } from './chips.js';
 import { setFourColor } from './cards.js';
 import { renderChat, bindChatForm } from './chat.js';
+import { createReveal } from './reveal.js';
 import * as menu from './menu.js';
 import { MODE_LABEL } from './menu.js';
 import * as sound from './sound.js';
@@ -25,6 +26,35 @@ let raiseValue = null;
 let lastHandId = null;
 let lastPhase = null;
 let resultsKey = null;
+let pendingAwards = [];
+
+/** The table lags the server on purpose; this owns how far behind it is. */
+const reveal = createReveal(onRevealStep);
+
+function onRevealStep(step) {
+  if (!snapshot) return;
+
+  // Grab the pot's position before the repaint sweeps it off the felt.
+  const potAt = step === 'settled' ? localCenter(refs.pot) : null;
+
+  paint(snapshot, reveal.view());
+  renderDock(snapshot);
+
+  if (step === 'board' || step === 'tabled') sound.play('flip');
+  if (step === 'settled') playAwards(potAt);
+  if (step === 'results') paintResults(snapshot, true);
+}
+
+function playAwards(potAt) {
+  const from = potAt ?? percentToLocal({ x: 50, y: 62 });
+  for (const award of pendingAwards) {
+    const to = percentToLocal(seatPercent(award.seat, snapshot));
+    flyChips(from, to, award.amount, { duration: 620, label: true });
+    sparkle(to);
+    sound.play(award.seat === snapshot.you?.seat ? 'win' : 'lose');
+  }
+  pendingAwards = [];
+}
 
 /* ------------------------------ boot ------------------------------ */
 
@@ -73,12 +103,14 @@ function handleUpdate({ snapshot: next, events }) {
 
   if (next.hand && next.hand.handId !== lastHandId) {
     lastHandId = next.hand.handId;
+    pendingAwards = [];
     if (!events.some((e) => e.type === 'handStart')) resetDecor();
   }
 
   noteEvents(events);
   snapshot = next;
-  paint(snapshot);
+  reveal.sync(snapshot);
+  paint(snapshot, reveal.view());
   renderDock(snapshot);
 
   if (snapshot.you?.seated) menu.hide();
@@ -92,7 +124,7 @@ function handleUpdate({ snapshot: next, events }) {
   }
 
   paintClock();
-  paintResults(snapshot);
+  paintResults(snapshot, reveal.view().results);
   if (lastPhase === 'finished' && snapshot.phase !== 'finished' && !snapshot.you?.seated) menu.reopen();
   lastPhase = snapshot.phase;
 
@@ -130,19 +162,17 @@ function runEffects(events, before) {
       const to = percentToLocal(seatPercent(e.seat, snapshot));
       flyChips(info?.at ?? percentToLocal(betPercent(e.seat, snapshot)), to, e.amount, { duration: 420 });
     }
-    if (e.type === 'awardPot') {
-      const to = percentToLocal(seatPercent(e.seat, snapshot));
-      flyChips(before.pot ?? potAt, to, e.amount, { duration: 620, label: true });
-      sparkle(to);
-    }
+    // The pot does not move until the reveal pipeline says the hand is settled.
+    if (e.type === 'awardPot') pendingAwards.push(e);
   }
 }
 
 function playSounds(events) {
   const kinds = new Set(events.map((e) => e.type));
   if (kinds.has('deal')) sound.play('deal');
-  if (kinds.has('community')) sound.play('flip');
   if (kinds.has('collectPot')) sound.play('potSlide');
+  // Board cards and the pot award are voiced by the reveal pipeline instead,
+  // so the sound lands with the card rather than with the network packet.
 
   for (const e of events) {
     if (e.type === 'action') {
@@ -151,7 +181,6 @@ function playSounds(events) {
       else sound.play('chips');
     }
     if (e.type === 'actionOn' && e.seat === snapshot.you?.seat) sound.play('turn');
-    if (e.type === 'awardPot') sound.play(e.seat === snapshot.you?.seat ? 'win' : 'lose');
     if (e.type === 'rebuy') sound.play('chips');
   }
 }
@@ -411,8 +440,9 @@ setInterval(paintClock, 1000);
 
 /* ---------------------------- standings ---------------------------- */
 
-function paintResults(s) {
-  const results = s.game?.finished ? s.game.results : null;
+function paintResults(s, ready) {
+  // The standings wait until the table has finished showing who won with what.
+  const results = ready && s.game?.finished ? s.game.results : null;
   if (!results) { $('resultsModal').hidden = true; resultsKey = null; return; }
 
   // Render once; if the player closes it, a later snapshot must not reopen it.
@@ -516,7 +546,7 @@ $('btnFourColor').addEventListener('click', () => {
   $('btnFourColor').classList.toggle('on', on);
   refs.board.dataset.keys = '';
   for (const box of refs.seats.querySelectorAll('.seat-cards')) box.dataset.keys = '';
-  if (snapshot) paint(snapshot);
+  if (snapshot) paint(snapshot, reveal.view());
 });
 
 $('btnStand').addEventListener('click', () => {
@@ -604,7 +634,7 @@ $('settingsForm').addEventListener('submit', (e) => {
 let resizeRaf = null;
 window.addEventListener('resize', () => {
   if (resizeRaf) cancelAnimationFrame(resizeRaf);
-  resizeRaf = requestAnimationFrame(() => { if (snapshot) paint(snapshot); });
+  resizeRaf = requestAnimationFrame(() => { if (snapshot) paint(snapshot, reveal.view()); });
 });
 
 function toast(message, kind = '') {

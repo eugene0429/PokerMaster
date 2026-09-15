@@ -132,20 +132,31 @@ function actionTag(e) {
 
 /* ----------------------------- painting ---------------------------- */
 
-export function paint(snapshot) {
+const SHOW_ALL = { board: Infinity, tabled: null, settled: true, results: true };
+
+/**
+ * `reveal` says how much of the hand may be drawn yet — see reveal.js. The
+ * snapshot is always the finished truth; this is the part of it on screen.
+ */
+export function paint(snapshot, reveal = SHOW_ALL) {
   const table = refs.table.getBoundingClientRect();
   refs.table.style.setProperty('--u', `${table.width / 100}px`);
 
-  paintSeats(snapshot, table);
+  paintSeats(snapshot, table, reveal);
   paintBets(snapshot);
-  paintBoard(snapshot);
-  paintPot(snapshot);
-  paintStatus(snapshot);
+  paintBoard(snapshot, reveal);
+  paintPot(snapshot, reveal);
+  paintStatus(snapshot, reveal);
   paintTimer(snapshot);
-  markShowdown(snapshot);
+  markShowdown(snapshot, reveal);
 }
 
-function paintSeats(snapshot, tableRect) {
+/** Has this seat's hand been turned over on screen yet? */
+function isTabled(reveal, seat) {
+  return reveal.tabled === null || reveal.tabled.has(seat);
+}
+
+function paintSeats(snapshot, tableRect, reveal) {
   const wanted = new Set();
 
   for (let seat = 0; seat < snapshot.config.maxSeats; seat++) {
@@ -166,7 +177,7 @@ function paintSeats(snapshot, tableRect) {
     if (!data) {
       renderEmptySeat(el, seat, snapshot);
     } else {
-      renderOccupiedSeat(el, data, snapshot, tableRect, pos);
+      renderOccupiedSeat(el, data, snapshot, tableRect, pos, reveal);
     }
   }
 
@@ -202,7 +213,7 @@ function renderEmptySeat(el, seat, snapshot) {
   btn.disabled = !canSit && !canBot;
 }
 
-function renderOccupiedSeat(el, data, snapshot, tableRect, pos) {
+function renderOccupiedSeat(el, data, snapshot, tableRect, pos, reveal) {
   if (el.dataset.mode !== 'filled') {
     el.dataset.mode = 'filled';
     el.innerHTML = `
@@ -242,10 +253,15 @@ function renderOccupiedSeat(el, data, snapshot, tableRect, pos) {
   const kick = el.querySelector('.kick-seat');
   kick.classList.toggle('available', !!snapshot.you?.isHost && !data.isMe);
 
-  paintSeatCards(el.querySelector('.seat-cards'), data, snapshot, tableRect, pos);
-  paintSeatTag(el, data);
+  // Face-up cards wait their turn at showdown, even though the server already
+  // sent them — a hand nobody saw turn over may as well not have been shown.
+  const held = snapshot.hand?.complete && !data.isMe && !isTabled(reveal, data.seat);
+  const cards = held ? null : data.cards;
+
+  paintSeatCards(el.querySelector('.seat-cards'), data, cards, tableRect, pos);
+  paintSeatTag(el, data, reveal);
   paintDealerButton(el, data);
-  paintHandName(el, data, snapshot);
+  paintHandName(el, data, snapshot, reveal);
 }
 
 function seatState(data) {
@@ -255,11 +271,11 @@ function seatState(data) {
   return '';
 }
 
-function paintSeatCards(box, data, snapshot, tableRect, pos) {
+function paintSeatCards(box, data, cards, tableRect, pos) {
   const count = data.cardCount;
   const keys = [];
   for (let i = 0; i < count; i++) {
-    const card = data.cards?.[i] ?? null;
+    const card = cards?.[i] ?? null;
     keys.push(`${i}:${card ? cardKey(card) : 'back'}`);
   }
   if (box.dataset.keys === keys.join(',')) return;
@@ -273,7 +289,7 @@ function paintSeatCards(box, data, snapshot, tableRect, pos) {
   const dy = ((50 - pos.y) / 100) * tableRect.height;
 
   keys.forEach((key, i) => {
-    const card = data.cards?.[i] ?? null;
+    const card = cards?.[i] ?? null;
     const el = document.createElement('div');
     el.className = 'card';
     el.innerHTML = card ? cardFaceSVG(card) : cardBackSVG();
@@ -290,8 +306,8 @@ function paintSeatCards(box, data, snapshot, tableRect, pos) {
   });
 }
 
-function paintSeatTag(el, data) {
-  const win = decor.winners.get(data.seat);
+function paintSeatTag(el, data, reveal) {
+  const win = reveal.settled ? decor.winners.get(data.seat) : null;
   const tag = win ? { text: `+${formatChips(win)}`, kind: 'win' } : decor.actions.get(data.seat);
   let node = el.querySelector('.seat-tag');
 
@@ -321,8 +337,9 @@ function paintDealerButton(el, data) {
   }
 }
 
-function paintHandName(el, data, snapshot) {
-  const name = snapshot.hand?.complete ? decor.handNames.get(data.seat) : null;
+function paintHandName(el, data, snapshot, reveal) {
+  const shown = snapshot.hand?.complete && (data.isMe || isTabled(reveal, data.seat));
+  const name = shown ? decor.handNames.get(data.seat) : null;
   let node = el.querySelector('.hand-name');
   if (!name || data.folded) { node?.remove(); return; }
   if (!node) {
@@ -361,8 +378,9 @@ function paintBets(snapshot) {
   }
 }
 
-function paintBoard(snapshot) {
-  const board = snapshot.hand?.board ?? [];
+function paintBoard(snapshot, reveal) {
+  const all = snapshot.hand?.board ?? [];
+  const board = all.slice(0, Math.min(all.length, reveal.board));
   const keys = board.map(cardKey).join(',');
   if (refs.board.dataset.keys === keys) return;
 
@@ -387,8 +405,8 @@ function paintBoard(snapshot) {
  * everything else. Runs on every paint, because the board itself does not
  * change when the hand completes.
  */
-function markShowdown(snapshot) {
-  const done = !!snapshot.hand?.complete && decor.winningKeys.size > 0;
+function markShowdown(snapshot, reveal) {
+  const done = !!snapshot.hand?.complete && reveal.settled && decor.winningKeys.size > 0;
   const winning = new Set();
   if (done) for (const set of decor.winningKeys.values()) for (const key of set) winning.add(key);
 
@@ -402,14 +420,17 @@ function markShowdown(snapshot) {
 
   for (const seatData of snapshot.seats) {
     if (!seatData?.cards) continue;
+    if (!seatData.isMe && !isTabled(reveal, seatData.seat)) continue;
     const box = refs.seats.querySelector(`[data-key="seat-${seatData.seat}"] .seat-cards`);
     if (!box) continue;
     [...box.children].forEach((el, i) => { if (seatData.cards[i]) mark(el, seatData.cards[i]); });
   }
 }
 
-function paintPot(snapshot) {
-  const total = snapshot.hand?.complete ? 0 : (snapshot.hand?.potTotal ?? 0);
+function paintPot(snapshot, reveal) {
+  // The pot stays on the felt until it actually slides to the winner.
+  const swept = snapshot.hand?.complete && reveal.settled;
+  const total = swept ? 0 : (snapshot.hand?.potTotal ?? 0);
   if (!snapshot.hand || total <= 0) { refs.pot.innerHTML = ''; refs.pot.dataset.amount = '0'; return; }
   if (refs.pot.dataset.amount === String(total)) return;
 
@@ -425,17 +446,20 @@ function paintPot(snapshot) {
   refs.pot.append(stack, label, value);
 }
 
-function paintStatus(snapshot) {
-  refs.status.textContent = statusText(snapshot);
+function paintStatus(snapshot, reveal) {
+  refs.status.textContent = statusText(snapshot, reveal);
 }
 
-function statusText(snapshot) {
+function statusText(snapshot, reveal) {
   if (snapshot.phase === 'countdown') return '곧 시작합니다…';
   if (snapshot.phase === 'idle') {
     const seated = snapshot.seats.filter(Boolean).length;
     return seated < 2 ? '플레이어를 기다리는 중 — 친구를 부르거나 봇을 추가하세요' : '대기 중';
   }
   if (snapshot.hand?.complete) {
+    if (!reveal.settled) {
+      return snapshot.hand.results?.showdown ? '쇼다운' : '핸드 종료';
+    }
     const names = [...decor.winners.keys()]
       .map((s) => snapshot.seats[s]?.name)
       .filter(Boolean);

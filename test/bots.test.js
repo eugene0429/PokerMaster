@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { startHand, applyAction, legalActions } from '../engine/table.js';
+import { decideBotAction } from '../server/bot/index.js';
 import {
-  decideBotAction, preflopStrength, lateness, boardTexture, liveOpponents,
-  postflopStrength, drawEquity,
-} from '../server/bots.js';
-import { PROFILE_BY_KEY, PROFILES, makeProfileDealer } from '../server/bot-profiles.js';
+  preflopStrength, lateness, boardTexture, liveOpponents, postflopStrength, drawEquity,
+} from '../server/bot/casual.js';
+import { PROFILE_BY_KEY, PROFILES, makeProfileDealer } from '../server/bot/profiles.js';
 import { parseCards, createDeck, shuffle } from '../engine/deck.js';
 import { ACTION } from '../engine/constants.js';
 

@@ -1,10 +1,10 @@
-import { ACTION, CATEGORY } from '../engine/constants.js';
-import { evaluateHand } from '../engine/handEval.js';
-import { snapRaiseTo } from '../engine/chips.js';
-import { DEFAULT_PROFILE } from './bot-profiles.js';
+import { ACTION, CATEGORY } from '../../engine/constants.js';
+import { evaluateHand } from '../../engine/handEval.js';
+import { DEFAULT_PROFILE } from './profiles.js';
+import { potNow, safe } from './common.js';
 
 /**
- * Rule-based opponents with personalities. Not strong players — the point is
+ * The casual brain: rule-based opponents with personalities. Not strong players — the point is
  * that each one folds, calls and raises for its own recognisable reasons, so
  * there is something to read.
  *
@@ -160,7 +160,7 @@ export function lateness(state, seat) {
 
 /* ---------------------------- decisions ---------------------------- */
 
-export function decideBotAction(state, seat, legal, options = {}) {
+export function decideCasualAction(state, seat, legal, options = {}) {
   const { profile = DEFAULT_PROFILE, rand = Math.random, memory = null } = options;
   const player = state.players[seat];
   const decision = state.board.length === 0
@@ -275,42 +275,4 @@ function bluffRaise(state, legal, rand) {
   return { type: ACTION.RAISE, amount: target };
 }
 
-function potNow(state) {
-  return state.potCollected
-    + state.players.reduce((sum, p) => sum + (p ? p.streetCommitted : 0), 0);
-}
-
-/** Last line of defence: never hand the engine an action it would reject. */
-function safe(action, legal) {
-  if (action.type === ACTION.RAISE) {
-    if (!legal.canRaise) return legal.canCall ? { type: ACTION.CALL } : { type: ACTION.CHECK };
-    const wanted = Math.max(legal.minRaiseTo, Math.round(action.amount));
-    const amount = snapRaiseTo(wanted, legal, legal.chipUnit);
-    return { type: ACTION.RAISE, amount };
-  }
-  if (action.type === ACTION.CALL && !legal.canCall) return { type: ACTION.CHECK };
-  if (action.type === ACTION.CHECK && !legal.canCheck) {
-    return legal.canCall ? { type: ACTION.CALL } : { type: ACTION.FOLD };
-  }
-  return action;
-}
-
 const clamp01 = (n) => Math.max(0, Math.min(1, n));
-
-/* ------------------------------ naming ----------------------------- */
-
-const BOT_NAMES = [
-  'Doyle', 'Stu', 'Vanessa', 'Daniel', 'Chris', 'Jennifer',
-  'Erik', 'Johnny', 'Fedor', 'Isildur', 'Maria', 'Tom',
-];
-
-export function pickBotName(taken) {
-  const free = BOT_NAMES.filter((n) => !taken.includes(n));
-  const pool = free.length ? free : BOT_NAMES;
-  return pool[Math.floor(Math.random() * pool.length)];
-}
-
-/** Bots pause long enough that the table doesn't feel like a spreadsheet. */
-export function botThinkingTime() {
-  return 900 + Math.random() * 1500;
-}

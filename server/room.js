@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { MAX_SEATS, ACTION } from '../engine/constants.js';
 import { startHand, applyAction, legalActions, IllegalAction } from '../engine/table.js';
-import { decideBotAction, pickBotName, botThinkingTime } from './bots.js';
-import { makeProfileDealer } from './bot-profiles.js';
+import { decideBotAction, pickBotName, botThinkingTime } from './bot/index.js';
+import { makeProfileDealer } from './bot/profiles.js';
 import {
   blindsForLevel, levelForElapsed, maxLevelFor, DEFAULT_STRUCTURE, MODE, RISING_BLINDS,
 } from './blinds.js';

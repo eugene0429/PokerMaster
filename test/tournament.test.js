@@ -494,13 +494,55 @@ describe('rebuys', () => {
     expect(room.playerAtSeat(botSeat)).toBeNull();
   });
 
-  it('restores exactly the starting stack, not the current blind level', () => {
+  it('buys back in at the same depth in big blinds as the blinds climb', () => {
     const { room } = table({ rebuys: 3 });
-    room.config = { ...room.config, sb: 400, bb: 800 };   // blinds climbed
+    room.config = { ...room.config, sb: 400, bb: 800 };   // 8x the opening 50/100
+    const bot = room.seatedPlayers().find((p) => p.isBot);
+    bot.stack = 0;
+    const events = settleAndDeal(room);
+    expect(events.find((e) => e.type === 'rebuy').stack).toBe(8000);
+    expect(bot.stack).toBe(8000);
+  });
+
+  it('buys back in for the starting stack while the blinds stay where they began', () => {
+    const { room } = table({ rebuys: -1, mode: MODE.CASH });
     const bot = room.seatedPlayers().find((p) => p.isBot);
     bot.stack = 0;
     settleAndDeal(room);
-    expect(bot.stack).toBe(room.config.startingStack);
+    expect(bot.stack).toBe(1000);
+  });
+
+  it('rounds the buy-back to whole chips at the current blinds', () => {
+    const room = makeRoom();
+    const host = room.join({ socketId: 's1', name: 'Host' });
+    room.startTable(host.id, { name: 'Host', bots: 3, mode: MODE.TOURNAMENT, startingStack: 1010, rebuys: 1 });
+    room.config = { ...room.config, sb: 75, bb: 150 };   // 1.5x: 1515 is not a whole number of 25s
+    const bot = room.seatedPlayers().find((p) => p.isBot);
+    bot.stack = 0;
+    settleAndDeal(room);
+    expect(bot.stack).toBe(1525);
+  });
+
+  it('pays what the rebuy notice said, even if the blinds rise before the next deal', () => {
+    const { room } = table({ rebuys: 1 });
+    room.config = { ...room.config, sb: 400, bb: 800 };
+    const bot = room.seatedPlayers().find((p) => p.isBot);
+    bot.stack = 0;
+    const events = room.handleBustedPlayers();
+    room.config = { ...room.config, sb: 600, bb: 1200 };  // a level ticks over between hands
+    room.clearFinishedPlayers();
+    expect(events.find((e) => e.type === 'rebuy').stack).toBe(8000);
+    expect(bot.stack).toBe(8000);
+  });
+
+  it('seats a latecomer and a new bot as deep as a rebuy would be', () => {
+    const { room, host } = table({ rebuys: -1, mode: MODE.TIMED });
+    room.config = { ...room.config, sb: 400, bb: 800 };
+    const guest = room.join({ socketId: 's2', name: 'Guest' });
+    room.sitDown(guest.id, 6);
+    expect(guest.stack).toBe(8000);
+    room.addBot(host.id, 7);
+    expect(room.playerAtSeat(7).stack).toBe(8000);
   });
 
   it('lets a capped cash game finish', () => {

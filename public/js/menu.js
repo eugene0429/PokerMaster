@@ -51,22 +51,24 @@ const BOT_MODE_BLURB = {
 function blurbFor(mode, rebuys, structure = 'standard') {
   const unlimited = rebuys === -1;
   const fate = unlimited
-    ? '칩이 떨어지면 계속 리바이해서 탈락이 없습니다.'
+    ? '칩이 떨어지면 계속 리바인해서 탈락이 없습니다.'
     : rebuys === 0
       ? '칩을 잃으면 바로 탈락합니다.'
-      : `리바이 ${rebuys}회를 다 쓰면 탈락합니다.`;
+      : `리바인 ${rebuys}회를 다 쓰면 탈락합니다.`;
 
   if (mode === 'cash') {
     return `블라인드 고정. ${fate}${unlimited ? ' 끝없이 연습만 합니다.' : ' 마지막 한 명이 남으면 끝납니다.'}`;
   }
+  // Rebuys follow the blinds up, so a buy-back late in the game still plays.
+  const deeper = rebuys === 0 ? '' : ' 리바인은 블라인드가 오른 만큼 커져서 처음과 같은 깊이로 돌아옵니다.';
   const climb = structure === 'turbo'
     ? '블라인드가 레벨마다 2배가 됩니다'
     : '블라인드가 레벨마다 1.5배씩 오릅니다';
 
   if (mode === 'timed') {
-    return `${climb}. 정한 시간이 지나면 칩 1위가 우승합니다. ${fate}`;
+    return `${climb}. 정한 시간이 지나면 칩 1위가 우승합니다. ${fate}${deeper}`;
   }
-  return `${climb}. ${fate}${unlimited ? ' 탈락이 없어 저절로 끝나지는 않습니다.' : ' 마지막 한 명이 우승합니다.'}`;
+  return `${climb}. ${fate}${unlimited ? ' 탈락이 없어 저절로 끝나지는 않습니다.' : ' 마지막 한 명이 우승합니다.'}${deeper}`;
 }
 
 const $ = (id) => document.getElementById(id);
@@ -306,7 +308,7 @@ export function updateMenu(snapshot) {
     $('menuTagline').textContent = '이미 열려 있는 테이블입니다. 이름만 정하면 바로 앉습니다.';
   }
 
-  if (!hosting) {
+  if (state.screen === 'join') {
     const free = snapshot.seats.filter((s) => s === null).length;
     const game = snapshot.game;
     const locked = game.mode === 'tournament' && game.startedAt !== null;
@@ -317,7 +319,7 @@ export function updateMenu(snapshot) {
       <div class="summary-row"><span>시작 스택</span><strong>${formatChips(snapshot.config.startingStack)}</strong></div>
       <div class="summary-row"><span>상승 폭</span><strong>${game.rising ? game.structureLabel : '고정'}</strong></div>
       <div class="summary-row"><span>봇</span><strong>${snapshot.config.botMode === 'practice' ? `연습 · ${BOT_SKILL_LABEL[snapshot.config.botSkill]}` : '캐주얼'}</strong></div>
-      <div class="summary-row"><span>리바이</span><strong>${game.rebuysUnlimited ? '무제한' : (game.rebuys === 0 ? '없음' : `${game.rebuys}회`)}</strong></div>
+      <div class="summary-row"><span>리바인</span><strong>${game.rebuysUnlimited ? '무제한' : (game.rebuys === 0 ? '없음' : `${game.rebuys}회`)}</strong></div>
       <div class="summary-row"><span>앉은 사람</span><strong>${seated.length}명 (사람 ${humans})</strong></div>`;
 
     if (locked) {

@@ -100,7 +100,7 @@ export function noteEvents(events) {
         break;
       case 'rebuy':
         decor.actions.set(e.seat, {
-          text: e.remaining === null ? '리바이' : `리바이 · ${e.remaining}회 남음`,
+          text: e.remaining === null ? '리바인' : `리바인 · ${e.remaining}회 남음`,
           kind: 'rebuy',
         });
         break;

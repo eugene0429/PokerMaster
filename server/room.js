@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { MAX_SEATS, ACTION } from '../engine/constants.js';
 import { startHand, applyAction, legalActions, IllegalAction } from '../engine/table.js';
+import { chipUnit } from '../engine/chips.js';
 import { decideBotAction, pickBotName, botThinkingTime } from './bot/index.js';
 import { makeBotDealer, BOT_MODES, SKILL_KEYS } from './bot/profiles.js';
 import { SessionStats, noteAction, observe } from './bot/read.js';
@@ -299,6 +300,11 @@ export class Room {
     if (this.isTournament() && this.startedAt) {
       throw new IllegalAction('토너먼트가 이미 시작돼서 참가할 수 없습니다');
     }
+    // A friend sitting at an empty table opens it, and the host loses the
+    // settings screen mid-way. Until the host starts the game, nobody else sits.
+    if (this.seatedPlayers().length === 0 && !this.isHost(playerId)) {
+      throw new IllegalAction('호스트가 게임을 시작하면 자리에 앉을 수 있습니다');
+    }
 
     if (name) player.name = this.uniqueName(sanitizeName(name, player.name), player.id);
     this.seatPlayerAt(player, seat);
@@ -308,7 +314,7 @@ export class Room {
 
   seatPlayerAt(player, seat) {
     player.seat = seat;
-    player.stack = this.config.startingStack;
+    player.stack = this.buyInStack();
     player.sittingOut = false;
     player.timeouts = 0;
     player.rebuysUsed = 0;
@@ -411,7 +417,7 @@ export class Room {
     const taken = [...this.players.values()].map((p) => p.name);
     this.players.set(id, {
       id, token: randomUUID(), name: this.uniqueName(pickBotName(taken)),
-      seat: target, stack: this.config.startingStack, isBot: true,
+      seat: target, stack: this.buyInStack(), isBot: true,
       ...this.nextBot(this.config), ledger: {}, rebuysUsed: 0,
       connected: true, sittingOut: false, disconnectedAt: null, timeouts: 0,
     });
@@ -739,6 +745,18 @@ export class Room {
     this.setTimer('next', SETTLE_MS, () => this.maybeStartHand());
   }
 
+  /**
+   * What a player sits down or buys back in with: the starting stack, kept at
+   * the same depth in big blinds as the blinds climb. A 100bb start buys back
+   * in for 100bb at every level; with fixed blinds it is the starting stack.
+   */
+  buyInStack() {
+    const { startingStack, sb, bb } = this.config;
+    const unit = chipUnit({ sb, bb });
+    const deep = startingStack * (bb / this.baseBlinds.bb);
+    return Math.max(unit, Math.round(deep / unit) * unit);
+  }
+
   get rebuysAreUnlimited() {
     return this.config.rebuys === UNLIMITED_REBUYS;
   }
@@ -766,10 +784,11 @@ export class Room {
     for (const p of busted) {
       if (this.rebuysLeft(p) > 0) {
         p.rebuysUsed = (p.rebuysUsed ?? 0) + 1;
-        p.pendingRebuy = true;
+        // Fixed now, so the stack that arrives is the one the notice promised.
+        p.pendingRebuy = this.buyInStack();
         events.push({
           type: 'rebuy', seat: p.seat, name: p.name,
-          stack: this.config.startingStack, used: p.rebuysUsed,
+          stack: p.pendingRebuy, used: p.rebuysUsed,
           remaining: this.rebuysAreUnlimited ? null : this.rebuysLeft(p),
         });
         continue;
@@ -790,8 +809,8 @@ export class Room {
   clearFinishedPlayers() {
     for (const p of [...this.players.values()]) {
       if (p.pendingRebuy) {
+        p.stack = p.pendingRebuy;
         p.pendingRebuy = false;
-        p.stack = this.config.startingStack;
       }
       if (!p.bustedOut && !p.leaveAfterHand) continue;
       this.unseat(p);

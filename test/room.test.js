@@ -173,7 +173,8 @@ describe('names at the table', () => {
 
   it('disambiguates a name supplied when sitting down too', () => {
     const room = makeRoom();
-    room.join({ socketId: 's1', name: 'Kim' });
+    const host = room.join({ socketId: 's1', name: 'Kim' });
+    room.startTable(host.id, { name: 'Kim', bots: 1 });
     const b = room.join({ socketId: 's2', name: 'guest' });
     room.sitDown(b.id, 3, 'Kim');
     expect(b.name).toBe('Kim 2');
@@ -186,5 +187,29 @@ describe('names at the table', () => {
     for (let i = 0; i < 9; i++) room.addBot(a.id);
     const names = [...room.players.values()].map((p) => p.name);
     expect(new Set(names).size).toBe(names.length);
+  });
+});
+
+describe('before the host opens the table', () => {
+  it('keeps a friend out of the seats, so the host can finish the settings', () => {
+    const room = makeRoom();
+    const host = room.join({ socketId: 's1', name: 'Host' });
+    const guest = room.join({ socketId: 's2', name: 'Guest' });
+    expect(() => room.sitDown(guest.id, 3)).toThrow(/호스트가 게임을 시작하면/);
+    expect(room.seatedPlayers()).toHaveLength(0);
+
+    // The host's settings still go through, and the friend is dealt in with them.
+    room.startTable(host.id, { name: 'Host', sb: 100, bb: 200, bots: 1 });
+    expect(room.config.bb).toBe(200);
+    expect(guest.seat).not.toBeNull();
+  });
+
+  it('lets a friend sit once the table is open', () => {
+    const room = makeRoom();
+    const host = room.join({ socketId: 's1', name: 'Host' });
+    room.startTable(host.id, { name: 'Host', bots: 1 });
+    const late = room.join({ socketId: 's2', name: 'Late' });
+    room.sitDown(late.id, 5);
+    expect(room.playerAtSeat(5)).toBe(late);
   });
 });

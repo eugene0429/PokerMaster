@@ -210,13 +210,13 @@ function playSounds(events) {
 function announceBustOuts(events, mySeat) {
   for (const e of events) {
     if (e.type === 'rebuy' && e.seat === mySeat) {
-      toast(e.remaining === null
-        ? `칩이 떨어져 리바이했습니다`
-        : `칩이 떨어져 리바이했습니다 — ${e.remaining}회 남음`);
+      // The amount follows the blinds, so say what is coming back.
+      const left = e.remaining === null ? '' : ` · ${e.remaining}회 남음`;
+      toast(`칩이 떨어져 리바인했습니다 — 스택 ${formatChips(e.stack)}${left}`);
     }
     if (e.type === 'knockOut') {
       toast(e.seat === mySeat
-        ? '리바이를 모두 써서 탈락했습니다 — 관전으로 전환됩니다'
+        ? '리바인을 모두 써서 탈락했습니다 — 관전으로 전환됩니다'
         : `${e.name} 탈락`, e.seat === mySeat ? 'error' : '');
     }
   }
@@ -234,7 +234,7 @@ function renderDock(s) {
     addStrip('스택', formatChips(displayStack(s, reveal.view(), hero.seat)));
     if (s.hand) addStrip('팟', formatChips(s.hand.potTotal));
     const left = s.seats[hero.seat]?.rebuysLeft;
-    if (left !== null && left !== undefined) addStrip('리바이', `${left}회 남음`);
+    if (left !== null && left !== undefined) addStrip('리바인', `${left}회 남음`);
     if (toAct?.toCall > 0) addStrip('콜 금액', formatChips(toAct.toCall), 'to-call');
   }
 
@@ -533,7 +533,7 @@ function paintResults(s, ready) {
       <span class="place">${row.place}</span>
       <span class="who">${escapeHtml(row.name)}${row.isBot ? ' <span class="bot-mark">BOT</span>' : ''}</span>
       <span class="chips">${row.stack > 0 ? formatChips(row.stack) : '탈락'}${
-        row.rebuysUsed ? `<span class="rebuy-mark">리바이 ${row.rebuysUsed}</span>` : ''
+        row.rebuysUsed ? `<span class="rebuy-mark">리바인 ${row.rebuysUsed}</span>` : ''
       }</span>`;
     $('standings').appendChild(li);
   }

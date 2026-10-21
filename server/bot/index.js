@@ -1,10 +1,13 @@
 import { decideCasualAction } from './casual.js';
+import { decideProAction } from './pro.js';
 
 /**
- * One entry point for every bot. For now there is only the casual brain.
- * Whatever comes back is legal.
+ * One entry point for every bot. `options.brain` picks the player behind the
+ * seat: 'pro' for the equity engine, anything else for the casual archetypes.
+ * Either way the action returned is legal.
  */
 export function decideBotAction(state, seat, legal, options = {}) {
+  if (options.brain === 'pro') return decideProAction(state, seat, legal, options);
   return decideCasualAction(state, seat, legal, options);
 }
 

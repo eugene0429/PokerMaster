@@ -61,3 +61,40 @@ export function makeProfileDealer(rand = Math.random) {
     return bag.pop();
   };
 }
+
+/* ------------------------------ pro bots ----------------------------- */
+
+/**
+ * Pro styles sit on top of one strong core. They change taste, not skill.
+ *
+ *  width     multiplier on every preflop chart
+ *  bluffCap  multiplier on the balanced bluff ratio
+ *  mix       how close two options must be (fraction of the pot) to mix them
+ *  sizes     bet sizes considered, as fractions of the pot
+ *  slowplay  how often a monster checks when it could bet
+ *  edgeMix   how often a hand just outside the opening range opens anyway
+ */
+export const PRO_STYLES = [
+  { key: 'pro-solid',  width: 1.0, bluffCap: 1.0, mix: 0.08, sizes: [0.33, 0.66, 1.0], slowplay: 0.08, edgeMix: 0.3 },
+  { key: 'pro-tight',  width: 0.8, bluffCap: 0.6, mix: 0.08, sizes: [0.5, 0.75],       slowplay: 0.05, edgeMix: 0.15 },
+  { key: 'pro-loose',  width: 1.3, bluffCap: 1.0, mix: 0.08, sizes: [0.5, 0.75, 1.25], slowplay: 0.05, edgeMix: 0.45 },
+  { key: 'pro-tricky', width: 1.0, bluffCap: 1.1, mix: 0.16, sizes: [0.33, 0.75, 1.1], slowplay: 0.3,  edgeMix: 0.3 },
+];
+
+export const PRO_STYLE_BY_KEY = Object.fromEntries(PRO_STYLES.map((s) => [s.key, s]));
+
+/**
+ * Difficulty is the same engine run more or less carefully.
+ *
+ *  samples/timeMs  Monte Carlo budget per decision, whichever runs out first
+ *  narrow          narrow opponents' ranges by their postflop actions
+ *  exploit         0..1, how far session stats move the opponent model
+ *  mistake         chance of taking the second-best option
+ *  realization     discount equity for position and streets to come
+ *  balance         cap bluffs at the ratio the bet size can support
+ */
+export const SKILLS = {
+  easy:   { key: 'easy',   samples: 400,  timeMs: 30,  narrow: false, exploit: 0,   mistake: 0.2,  realization: false, balance: false },
+  normal: { key: 'normal', samples: 1500, timeMs: 60,  narrow: true,  exploit: 0.5, mistake: 0.12, realization: true,  balance: true },
+  hard:   { key: 'hard',   samples: 4000, timeMs: 100, narrow: true,  exploit: 1,   mistake: 0,    realization: true,  balance: true },
+};

@@ -8,6 +8,7 @@
     "share": "SHARE=1 node server/index.js",
     "test": "vitest run",
     "test:watch": "vitest",
+    "arena": "node tools/bot-arena.js",
     "launcher": "bash tools/install-launcher.sh"
   },
   "dependencies": {

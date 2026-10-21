@@ -166,6 +166,83 @@ describe('pro bot: spots', () => {
   });
 });
 
+describe('pro bot: facing all-ins', () => {
+  /** Six-handed, 100bb deep, except a 10bb stack under the gun who shoves. */
+  function shoveFromUTG(foldsAfter = 0) {
+    const stacks = [10000, 10000, 10000, 1000, 10000, 10000];
+    let { state } = startHand({
+      seats: stacks.map((stack, seat) => ({ seat, id: `p${seat}`, name: `P${seat}`, stack })),
+      buttonSeat: 0, blinds: BLINDS, deck: createDeck(), maxSeats: 6,
+    });
+    const log = [];
+    const act = (type, amount) => {
+      const seat = state.currentSeat;
+      log.push(noteAction(state, seat, { type, amount }));
+      ({ state } = applyAction(state, { seat, type, amount }));
+    };
+    act(ACTION.RAISE, 1000);
+    for (let i = 0; i < foldsAfter; i++) act(ACTION.FOLD);
+    return { state, log };
+  }
+
+  it('calls a short-stack shove with big pairs and AK while players are still to act', () => {
+    // Hijack, cutoff, button: three, two and one player still behind.
+    for (const [foldsAfter, hand] of [[0, 'Ks Kd'], [1, 'Qs Qd'], [2, 'As Kh'], [0, 'Js Jd']]) {
+      for (let seed = 0; seed < 5; seed++) {
+        const { state, log } = shoveFromUTG(foldsAfter);
+        state.players[state.currentSeat].cards = parseCards(hand);
+        expect(pro(state, state.currentSeat, { actions: log, seed }).type).toBe(ACTION.CALL);
+      }
+    }
+  });
+
+  it('still folds rubbish to the same shove', () => {
+    const { state, log } = shoveFromUTG(0);
+    state.players[state.currentSeat].cards = parseCards('7c 2d');
+    expect(pro(state, state.currentSeat, { actions: log }).type).toBe(ACTION.FOLD);
+  });
+
+  it('calls rather than raises when the only opponent is already all in', () => {
+    for (const skill of Object.values(SKILLS)) {
+      for (let seed = 0; seed < 20; seed++) {
+        // Villain shoved the river for 1800 of their last chips; we cover.
+        const { state, log } = river({ hero: 'Th 3d', board: 'Ah Kh Qh Jh 2c', pot: 1800, villainBet: 1800, log: threeBetLine(1800) });
+        state.players[1].stack = 0;
+        state.players[1].allIn = true;
+        expect(pro(state, 0, { skill, seed, actions: log }).type).toBe(ACTION.CALL);
+      }
+    }
+  });
+
+  it('does not bet air into a pot it cannot win uncontested, with one player all in', () => {
+    // Three-way flop. Seat 1 is all in for the pot as it stands; seat 2 checks to us.
+    // An all-in player cannot fold, so a bet with nothing has no way to win the
+    // main pot. Tricky mixes widest, which is where a false fold rate shows.
+    for (let seed = 0; seed < 40; seed++) {
+      const { state } = startHand({ seats: seats(3), buttonSeat: 0, blinds: BLINDS, deck: createDeck(), maxSeats: 3 });
+      state.players[0].cards = parseCards('3s Jc');
+      state.board = parseCards('5d 9h 4h');
+      state.street = 'flop';
+      state.potCollected = 3000;
+      for (const p of state.players) { p.streetCommitted = 0; p.hasActed = false; p.canRaise = true; p.stack = 9000; }
+      state.players[1].stack = 0;
+      state.players[1].allIn = true;
+      state.players[2].hasActed = true;
+      state.currentBet = 0;
+      state.minRaise = BLINDS.bb;
+      state.currentSeat = 0;
+      const log = [
+        { seat: 0, id: 'p0', street: 'preflop', type: 'raise', amount: 250, potBefore: 150, betBefore: 100, toCall: 50 },
+        { seat: 1, id: 'p1', street: 'preflop', type: 'call', amount: 0, potBefore: 400, betBefore: 250, toCall: 200 },
+        { seat: 2, id: 'p2', street: 'preflop', type: 'call', amount: 0, potBefore: 600, betBefore: 250, toCall: 150 },
+        { seat: 2, id: 'p2', street: 'flop', type: 'check', amount: 0, potBefore: 3000, betBefore: 0, toCall: 0 },
+      ];
+      const a = pro(state, 0, { seed, actions: log, profile: PRO_STYLE_BY_KEY['pro-tricky'], budget: { samples: 1500, timeMs: Infinity } });
+      expect(a.type).toBe(ACTION.CHECK);
+    }
+  });
+});
+
 describe('pro bot: fair play', () => {
   it('decides the same whatever the opponents are really holding', () => {
     const deal = seeded(21);

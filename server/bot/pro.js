@@ -1,5 +1,5 @@
 import { ACTION } from '../../engine/constants.js';
-import { classOf, CLASS_PERCENTILE, comboIndex, topOfRange } from '../../engine/range.js';
+import { classOf, CLASS_PERCENTILE, comboIndex, topOfRange, COMBO_COUNT } from '../../engine/range.js';
 import {
   rfiPercent, inRange, pushPercent, THREE_BET_SHARE, FLAT_SHARE_IP, BB_DEFEND,
   FOUR_BET_SHARE, CALL_THREE_BET_SHARE,
@@ -21,6 +21,10 @@ import { potNow, safe, clamp, playersBehind, postflopOrder, playersDealt } from 
 const BLUFF_EQUITY = 0.35;
 const NEVER_FOLD_EQUITY = 0.8;
 const BLUFF_THREE_BETS = new Set(['A5s', 'A4s', 'A3s', 'A2s']);
+/** How often somebody still to act behind us wakes up with a hand that plays on. */
+const WAKE_UP = 0.03;
+/** An all-in player is past folding: every hand they hold goes to showdown. */
+const ALL_CONTINUE = new Uint8Array(COMBO_COUNT).fill(1);
 
 export function decideProAction(state, seat, legal, options = {}) {
   const ctx = context(state, seat, legal, options);
@@ -133,12 +137,28 @@ function preflop(ctx) {
  */
 function priceTheCall(ctx) {
   const { legal } = ctx;
-  const ranges = ctx.opps.map((p) => rangeOf(ctx, p));
-  const { equity } = equityVsRanges(ctx.hole, [], ranges, runBudget(ctx));
+  const against = contesting(ctx);
+  const ranges = against.map((p) => rangeOf(ctx, p));
+  const { equity: raw } = equityVsRanges(ctx.hole, [], ranges, runBudget(ctx));
+  // Each player still to act mostly folds; now and then one wakes up with a hand.
+  const equity = raw * Math.pow(1 - WAKE_UP, ctx.opps.length - against.length);
   const evCall = equity * (ctx.pot + legal.toCall) - legal.toCall;
   if (legal.canRaise && equity > 0.55 && !ctx.opps.some((p) => p.allIn)) return ALL_IN(ctx);
   if (legal.canCheck) return CHECK;
   return evCall > 0 ? CALL : FOLD;
+}
+
+/**
+ * Opponents who have put chips in by choice, or are all in. Players still to
+ * act have shown nothing yet: pricing them as callers turns a short-stack
+ * shove into a five-way all-in, and kings fold to it.
+ */
+function contesting(ctx) {
+  const acted = new Set(ctx.log
+    .filter((a) => a.type === ACTION.RAISE || a.type === ACTION.CALL)
+    .map((a) => a.seat));
+  const live = ctx.opps.filter((p) => p.allIn || acted.has(p.seat));
+  return live.length ? live : ctx.opps;
 }
 
 /* ------------------------------ postflop ----------------------------- */
@@ -161,11 +181,14 @@ function postflop(ctx) {
   const masks = sizes.map((to) => {
     const bet = to - state.currentBet;
     return ctx.opps.map((p, i) => {
+      if (p.allIn) return ALL_CONTINUE;
       const defend = clamp((potAfterCall / (potAfterCall + bet)) * ctx.modelOf(p).looseness, 0.05, 0.95);
       return topOfRange(ranges[i], strength, defend);
     });
   });
   const result = equityVsRanges(ctx.hole, state.board, ranges, { ...runBudget(ctx), masks });
+  const deepest = Math.max(state.currentBet,
+    ...ctx.opps.filter((p) => !p.allIn).map((p) => p.stack + p.streetCommitted));
   const eq = result.equity;
   const R = realization(ctx);
 
@@ -181,8 +204,10 @@ function postflop(ctx) {
     const bluff = eq < BLUFF_EQUITY;
     if (bluff && !canBluff(to)) return;
     const { foldAll, eqCalled } = result.sizes[k];
-    const cost = to - me.streetCommitted;
-    const add = to - state.currentBet;
+    // Nobody calls more than they have; the rest of a bigger bet comes back.
+    const matched = Math.min(to, deepest);
+    const cost = matched - me.streetCommitted;
+    const add = matched - state.currentBet;
     const r = to === legal.maxRaiseTo ? 1 : R;
     const ev = foldAll * pot + (1 - foldAll) * (eqCalled * r * (pot + cost + add) - cost);
     options.push({ action: raiseTo(to), ev, bluff });
@@ -213,7 +238,8 @@ function runBudget(ctx) {
 /** Bet sizes to price, as raise-to amounts, legal and without duplicates. */
 function candidateSizes(ctx) {
   const { state, legal, pot, style } = ctx;
-  if (!legal.canRaise) return [];
+  // With everyone else all in, a raise is only a call that gets handed back.
+  if (!legal.canRaise || ctx.opps.every((p) => p.allIn)) return [];
   const out = new Set();
   const base = pot + legal.toCall;
   for (const f of style.sizes) {

@@ -32,6 +32,20 @@ const REBUY_PRESETS = [
   { value: -1, label: '무제한' },
 ];
 const DEFAULT_REBUYS = { tournament: 0, timed: 0, cash: -1 };
+const BOT_MODE_PRESETS = [
+  { key: 'casual', label: '캐주얼' },
+  { key: 'practice', label: '연습' },
+];
+const BOT_SKILL_PRESETS = [
+  { key: 'easy', label: '쉬움' },
+  { key: 'normal', label: '보통' },
+  { key: 'hard', label: '어려움' },
+];
+const BOT_SKILL_LABEL = { easy: '쉬움', normal: '보통', hard: '어려움' };
+const BOT_MODE_BLURB = {
+  casual: '성격이 제각각인 일반 봇과 실력이 제각각인 프로 봇이 섞여 앉습니다. 누가 누군지는 알려주지 않습니다.',
+  practice: '모든 봇이 프로입니다. 레인지를 읽고 팟 오즈를 따지고, 테이블에서 당신의 버릇을 기억합니다.',
+};
 
 /** The blurb has to describe the actual combination, not just the mode. */
 function blurbFor(mode, rebuys, structure = 'standard') {
@@ -70,6 +84,8 @@ const state = {
   structure: 'standard',
   rebuys: 0,
   rebuysTouched: false,
+  botMode: 'casual',
+  botSkill: 'normal',
   open: true,
 };
 
@@ -120,6 +136,18 @@ export function initMenu(h) {
     select: () => { state.stack = v; },
   })));
 
+  buildPresets($('botModePresets'), BOT_MODE_PRESETS.map((m) => ({
+    label: m.label,
+    isActive: () => state.botMode === m.key,
+    select: () => { state.botMode = m.key; syncBotMode(); },
+  })));
+
+  buildPresets($('botSkillPresets'), BOT_SKILL_PRESETS.map((x) => ({
+    label: x.label,
+    isActive: () => state.botSkill === x.key,
+    select: () => { state.botSkill = x.key; },
+  })));
+
   $('botMinus').addEventListener('click', () => setBots(state.bots - 1));
   $('botPlus').addEventListener('click', () => setBots(state.bots + 1));
   $('menuEnter').addEventListener('click', enter);
@@ -142,6 +170,13 @@ export function initMenu(h) {
 
   setBots(state.bots);
   syncMode();
+  syncBotMode();
+}
+
+/** Difficulty only means something when every bot is a pro. */
+function syncBotMode() {
+  $('botSkillRow').hidden = state.botMode !== 'practice';
+  $('botModeBlurb').textContent = BOT_MODE_BLURB[state.botMode];
 }
 
 /** Only show the clock options the chosen mode actually uses. */
@@ -217,6 +252,8 @@ function enter() {
       totalMinutes: state.totalMinutes,
       structure: state.structure,
       rebuys: state.rebuys,
+      botMode: state.botMode,
+      botSkill: state.botSkill,
     });
   } else {
     handlers.onJoin?.({ name });
@@ -279,6 +316,7 @@ export function updateMenu(snapshot) {
       <div class="summary-row"><span>블라인드</span><strong>${formatChips(game.blinds.sb)} / ${formatChips(game.blinds.bb)}</strong></div>
       <div class="summary-row"><span>시작 스택</span><strong>${formatChips(snapshot.config.startingStack)}</strong></div>
       <div class="summary-row"><span>상승 폭</span><strong>${game.rising ? game.structureLabel : '고정'}</strong></div>
+      <div class="summary-row"><span>봇</span><strong>${snapshot.config.botMode === 'practice' ? `연습 · ${BOT_SKILL_LABEL[snapshot.config.botSkill]}` : '캐주얼'}</strong></div>
       <div class="summary-row"><span>리바이</span><strong>${game.rebuysUnlimited ? '무제한' : (game.rebuys === 0 ? '없음' : `${game.rebuys}회`)}</strong></div>
       <div class="summary-row"><span>앉은 사람</span><strong>${seated.length}명 (사람 ${humans})</strong></div>`;
 

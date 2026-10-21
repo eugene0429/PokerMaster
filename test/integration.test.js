@@ -149,6 +149,26 @@ describe('two players over the network', () => {
     b.close();
   }, 90000);
 
+  it('plays a hand against practice-mode pros from start to finish', async () => {
+    const host = client('Gil');
+    await host.ready;
+    host.send('startTable', { name: 'Gil', bots: 2, mode: 'cash', botMode: 'practice', botSkill: 'hard' });
+    await waitFor(() => host.snapshot?.hand?.handId >= 1, 25000);
+    expect(host.snapshot.config.botMode).toBe('practice');
+    expect(host.snapshot.config.botSkill).toBe('hard');
+
+    // The human checks or calls; the pros do whatever they do. Done when the
+    // first hand is over and the second has been dealt.
+    await waitFor(() => {
+      const act = host.snapshot?.toAct;
+      if (act && host.snapshot.hand.currentSeat === 0) host.send('action', { type: act.canCheck ? 'check' : 'call' });
+      return host.snapshot?.hand?.handId >= 2;
+    }, 60000, 60);
+
+    expect(host.errors).toEqual([]);
+    host.close();
+  }, 90000);
+
   it('locks a started tournament so a latecomer can only watch', async () => {
     const host = client('Eve');
     await host.ready;

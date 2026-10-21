@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { MAX_SEATS, ACTION } from '../engine/constants.js';
 import { startHand, applyAction, legalActions, IllegalAction } from '../engine/table.js';
 import { decideBotAction, pickBotName, botThinkingTime } from './bot/index.js';
-import { makeProfileDealer } from './bot/profiles.js';
+import { makeBotDealer, BOT_MODES, SKILL_KEYS } from './bot/profiles.js';
+import { SessionStats, noteAction, observe } from './bot/read.js';
 import {
   blindsForLevel, levelForElapsed, maxLevelFor, DEFAULT_STRUCTURE, MODE, RISING_BLINDS,
 } from './blinds.js';
@@ -23,6 +24,8 @@ const DEFAULTS = {
   totalMinutes: 60,
   rebuys: 0,          // -1 means unlimited
   structure: DEFAULT_STRUCTURE,
+  botMode: 'casual',   // casual: archetypes and pros mixed | practice: all pros
+  botSkill: 'normal',  // practice only: easy | normal | hard
 };
 
 const UNLIMITED_REBUYS = -1;
@@ -60,7 +63,9 @@ export class Room {
     this.turnEndsAt = null;
     this.countdownEndsAt = null;
     this.timers = new Map();
-    this.nextProfile = makeProfileDealer();
+    this.nextBot = makeBotDealer();
+    this.stats = new SessionStats();     // every player's tendencies, for the pro bots
+    this.handActions = [];               // this hand's public action log
     this.chat = new ChatLog();
     this.invite = { urls: [], primary: '', qr: null, hasLan: false };
 
@@ -407,7 +412,7 @@ export class Room {
     this.players.set(id, {
       id, token: randomUUID(), name: this.uniqueName(pickBotName(taken)),
       seat: target, stack: this.config.startingStack, isBot: true,
-      profile: this.nextProfile(), rebuysUsed: 0,
+      ...this.nextBot(this.config), ledger: {}, rebuysUsed: 0,
       connected: true, sittingOut: false, disconnectedAt: null, timeouts: 0,
     });
     this.maybeStartHand();
@@ -445,9 +450,12 @@ export class Room {
     const rebuys = clampInt(patch.rebuys, UNLIMITED_REBUYS, 99, this.config.rebuys);
     const structure = maxLevelFor(patch.structure) && STRUCTURE_KEYS.has(patch.structure)
       ? patch.structure : this.config.structure;
+    const botMode = BOT_MODES.includes(patch.botMode) ? patch.botMode : this.config.botMode;
+    const botSkill = SKILL_KEYS.includes(patch.botSkill) ? patch.botSkill : this.config.botSkill;
     this.config = {
       ...this.config,
       sb, bb, startingStack, turnSeconds, mode, levelMinutes, totalMinutes, rebuys, structure,
+      botMode, botSkill,
     };
   }
 
@@ -507,6 +515,8 @@ export class Room {
   clearGame() {
     this.dispose();
     this.hand = null;
+    this.handActions = [];
+    this.stats = new SessionStats();
     this.phase = 'idle';
     this.level = 0;
     this.startedAt = null;
@@ -599,6 +609,8 @@ export class Room {
     });
 
     this.hand = state;
+    this.handActions = [];
+    this.stats.startHand(state);
     this.phase = 'playing';
     this.publish(events);
     this.afterTransition();
@@ -626,9 +638,11 @@ export class Room {
   }
 
   applyPlayerAction(player, action) {
+    const note = noteAction(this.hand, player.seat, action);
     const { events } = applyAction(this.hand, {
       seat: player.seat, type: action.type, amount: action.amount,
     });
+    observe({ log: this.handActions, stats: this.stats }, note);
     this.publish(events);
     this.afterTransition();
   }
@@ -675,7 +689,9 @@ export class Room {
     let action;
     try {
       action = decideBotAction(this.hand, seat, legal, {
-        profile: bot?.profile, memory: bot?.memory,
+        brain: bot?.brain, profile: bot?.profile, skill: bot?.skill,
+        memory: bot?.memory, ledger: bot?.ledger,
+        stats: this.stats, actions: this.handActions,
       });
     } catch {
       action = legal.canCheck ? { type: ACTION.CHECK } : { type: ACTION.FOLD };
@@ -706,6 +722,7 @@ export class Room {
 
   settleHand() {
     this.phase = 'settling';
+    this.stats.endHand(this.hand);
     this.turnEndsAt = null;
 
     for (const p of this.seatedPlayers()) {

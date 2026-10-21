@@ -49,10 +49,14 @@ export const DEFAULT_PROFILE = PROFILE_BY_KEY.tag;
  * different personalities rather than three maniacs by luck.
  */
 export function makeProfileDealer(rand = Math.random) {
+  return makeBag(PROFILES, rand);
+}
+
+function makeBag(items, rand) {
   let bag = [];
-  return function nextProfile() {
+  return function next() {
     if (bag.length === 0) {
-      bag = PROFILES.slice();
+      bag = items.slice();
       for (let i = bag.length - 1; i > 0; i--) {
         const j = Math.floor(rand() * (i + 1));
         [bag[i], bag[j]] = [bag[j], bag[i]];
@@ -98,3 +102,29 @@ export const SKILLS = {
   normal: { key: 'normal', samples: 1500, timeMs: 60,  narrow: true,  exploit: 0.5, mistake: 0.12, realization: true,  balance: true },
   hard:   { key: 'hard',   samples: 4000, timeMs: 100, narrow: true,  exploit: 1,   mistake: 0,    realization: true,  balance: true },
 };
+
+export const BOT_MODES = ['casual', 'practice'];
+export const SKILL_KEYS = Object.keys(SKILLS);
+
+/**
+ * Who sits down next. Casual tables draw from one bag holding every casual
+ * archetype and every pro style, so a table never repeats a personality and
+ * nobody can tell a pro by counting; a pro drawn there gets a random
+ * difficulty. Practice tables are all pros at the chosen difficulty.
+ */
+export function makeBotDealer(rand = Math.random) {
+  const casualBag = makeBag([
+    ...PROFILES.map((profile) => ({ brain: 'casual', profile })),
+    ...PRO_STYLES.map((profile) => ({ brain: 'pro', profile })),
+  ], rand);
+  const styleBag = makeBag(PRO_STYLES, rand);
+
+  return function nextBot({ botMode = 'casual', botSkill = 'normal' } = {}) {
+    if (botMode === 'practice') {
+      return { brain: 'pro', profile: styleBag(), skill: SKILLS[botSkill] ?? SKILLS.normal };
+    }
+    const pick = casualBag();
+    if (pick.brain === 'casual') return { brain: 'casual', profile: pick.profile, skill: null };
+    return { brain: 'pro', profile: pick.profile, skill: SKILLS[SKILL_KEYS[Math.floor(rand() * SKILL_KEYS.length)]] };
+  };
+}

@@ -1,5 +1,6 @@
 import { ACTION, CATEGORY } from '../engine/constants.js';
 import { evaluateHand } from '../engine/handEval.js';
+import { snapRaiseTo } from '../engine/chips.js';
 import { DEFAULT_PROFILE } from './bot-profiles.js';
 
 /**
@@ -283,7 +284,8 @@ function potNow(state) {
 function safe(action, legal) {
   if (action.type === ACTION.RAISE) {
     if (!legal.canRaise) return legal.canCall ? { type: ACTION.CALL } : { type: ACTION.CHECK };
-    const amount = Math.min(legal.maxRaiseTo, Math.max(legal.minRaiseTo, Math.round(action.amount)));
+    const wanted = Math.max(legal.minRaiseTo, Math.round(action.amount));
+    const amount = snapRaiseTo(wanted, legal, legal.chipUnit);
     return { type: ACTION.RAISE, amount };
   }
   if (action.type === ACTION.CALL && !legal.canCall) return { type: ACTION.CHECK };

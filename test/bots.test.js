@@ -284,3 +284,25 @@ describe('bots never break the engine', () => {
     }
   });
 });
+
+describe('bet sizing', () => {
+  it('bets in whole chips, like a player pushing a stack forward', () => {
+    const rand = seeded(11);
+    for (const profile of PROFILES) {
+      for (let i = 0; i < 60; i++) {
+        let { state } = startHand({ seats: seats(4), buttonSeat: 0, blinds: BLINDS });
+        let guard = 0;
+        while (!state.complete && guard++ < 200) {
+          const seat = state.currentSeat;
+          const legal = legalActions(state, seat);
+          const action = decideBotAction(state, seat, legal, { profile, rand });
+          if (action.type === ACTION.RAISE) {
+            const edge = action.amount === legal.minRaiseTo || action.amount === legal.maxRaiseTo;
+            expect(edge || action.amount % legal.chipUnit === 0).toBe(true);
+          }
+          ({ state } = applyAction(state, { seat, type: action.type, amount: action.amount }));
+        }
+      }
+    }
+  });
+});

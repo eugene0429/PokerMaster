@@ -462,11 +462,13 @@ export class Room {
     if (this.seatedPlayers().length > 0) throw new IllegalAction('이미 열린 테이블이 있습니다');
     if (!this.isHost(playerId)) throw new IllegalAction('호스트만 게임을 시작할 수 있습니다');
 
+    // The seats can empty without anyone ending the game — everyone stands up
+    // or drops off — and the old game's clock stays behind. Built on top of it,
+    // the first bot was turned away as a late entry to a running tournament,
+    // and the table opened with only the people who were waiting.
+    this.clearGame();
     this.applyConfig(opts);
     this.baseBlinds = { sb: this.config.sb, bb: this.config.bb };
-    this.level = 0;
-    this.eliminated = [];
-    this.results = null;
 
     if (opts.name) player.name = this.uniqueName(sanitizeName(opts.name, player.name), player.id);
 
@@ -490,12 +492,20 @@ export class Room {
   /** Back to the main menu for everyone, with nothing carried over. */
   resetTable(playerId) {
     if (!this.isHost(playerId)) throw new IllegalAction('호스트만 새 게임을 시작할 수 있습니다');
-    this.dispose();
 
     for (const p of [...this.players.values()]) {
       if (p.isBot) { this.players.delete(p.id); this.tokens.delete(p.token); }
       else this.unseat(p);
     }
+    this.clearGame();
+    this.config = { ...this.config, sb: this.baseBlinds.sb, bb: this.baseBlinds.bb };
+    this.chat.system('게임이 끝났습니다 — 메인 메뉴로 돌아갑니다');
+    this.publish();
+  }
+
+  /** Everything one game leaves behind: its timers, its clock, its last hand, its results. */
+  clearGame() {
+    this.dispose();
     this.hand = null;
     this.phase = 'idle';
     this.level = 0;
@@ -505,12 +515,9 @@ export class Room {
     this.results = null;
     this.turnEndsAt = null;
     this.countdownEndsAt = null;
-    this.config = { ...this.config, sb: this.baseBlinds.sb, bb: this.baseBlinds.bb };
     this.pausedAt = null;
     this.suspended = [];
     this.pausedTurnRemaining = null;
-    this.chat.system('게임이 끝났습니다 — 메인 메뉴로 돌아갑니다');
-    this.publish();
   }
 
   /* --------------------------- game clock -------------------------- */

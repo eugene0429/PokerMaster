@@ -3,3 +3,7 @@ node_modules/
 
 # 임시 스크립트
 *.tmp.mjs
+
+# 런처 빌드 산출물 (npm run launcher 가 다시 만듭니다)
+tools/build/
+tools/PokerMaster.icns

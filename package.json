@@ -5,8 +5,10 @@
   "type": "module",
   "scripts": {
     "start": "node server/index.js",
+    "share": "SHARE=1 node server/index.js",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "launcher": "bash tools/install-launcher.sh"
   },
   "dependencies": {
     "express": "^4.21.2",

@@ -71,6 +71,27 @@ describe('opening a table from the main menu', () => {
     expect(room.seatedPlayers()).toHaveLength(10);
     expect(room.firstFreeSeat()).toBeNull();
   });
+
+  it('starts fresh after a table that emptied without being ended', () => {
+    const room = makeRoom();
+    const host = room.join({ socketId: 's1', name: 'Host' });
+    room.startTable(host.id, { name: 'Host', bots: 2, mode: 'tournament' });
+    room.startedAt = Date.now() - 2 * 24 * 60 * 60 * 1000;   // dealt two days ago
+    room.level = 9;
+    // Everyone leaves the table, but nobody presses 게임 끝내고 메인 메뉴로.
+    for (const bot of room.seatedPlayers().filter((p) => p.isBot)) room.kick(host.id, bot.seat);
+    room.standUp(host.id);
+    expect(room.seatedPlayers()).toHaveLength(0);
+
+    const friend = room.join({ socketId: 's2', name: 'Friend' });
+    room.startTable(host.id, { name: 'Host', bots: 4, mode: 'tournament', sb: 50, bb: 100 });
+
+    expect(friend.seat).not.toBeNull();
+    expect(room.seatedPlayers().filter((p) => p.isBot)).toHaveLength(4);
+    expect(room.startedAt).toBeNull();
+    expect(room.level).toBe(0);
+    expect(room.config.bb).toBe(100);
+  });
 });
 
 describe('dropping a bot into a chosen seat', () => {

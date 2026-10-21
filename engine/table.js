@@ -2,6 +2,7 @@ import { STREET, ACTION, MAX_SEATS } from './constants.js';
 import { freshShuffledDeck } from './deck.js';
 import { evaluateHand, handName } from './handEval.js';
 import { buildPots, awardPots, seatOrderFrom } from './pot.js';
+import { chipUnit, snapRaiseTo } from './chips.js';
 
 /**
  * One hand of no-limit hold'em, as a state machine.
@@ -176,6 +177,7 @@ export function legalActions(state, seat) {
     minRaiseTo: canRaise ? Math.min(wantRaiseTo, maxRaiseTo) : null,
     maxRaiseTo: canRaise ? maxRaiseTo : null,
     isBet: state.currentBet === 0,
+    chipUnit: chipUnit(state.blinds),
   };
 }
 
@@ -223,7 +225,7 @@ export function applyAction(state, { seat, type, amount = 0 }) {
     }
     case ACTION.RAISE: {
       if (!legal.canRaise) throw new IllegalAction('you may not raise');
-      const raiseTo = Math.min(Math.floor(amount), legal.maxRaiseTo);
+      const raiseTo = snapRaiseTo(amount, legal, legal.chipUnit);
       if (raiseTo <= state.currentBet) throw new IllegalAction('raise must exceed the current bet');
       const isAllIn = raiseTo === legal.maxRaiseTo;
       if (raiseTo < legal.minRaiseTo && !isAllIn) {

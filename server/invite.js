@@ -24,9 +24,13 @@ function isPrivate(ip) {
 /**
  * Everything the invite dialog needs, computed once at boot: the addresses to
  * hand out and a QR of the best one so a friend can just point a phone at it.
+ * With a public (tunnel) address, that one leads; with a key, every address
+ * carries it, since the server turns away anyone who arrives without it.
  */
-export async function buildInvite(port) {
-  const urls = lanAddresses().map((ip) => `http://${ip}:${port}`);
+export async function buildInvite(port, { publicUrl = null, key = null } = {}) {
+  const withKey = (url) => (key ? `${url}/?k=${encodeURIComponent(key)}` : url);
+  const lan = lanAddresses().map((ip) => `http://${ip}:${port}`);
+  const urls = [...(publicUrl ? [publicUrl] : []), ...lan].map(withKey);
   const primary = urls[0] ?? `http://localhost:${port}`;
 
   let qr = null;
@@ -41,5 +45,5 @@ export async function buildInvite(port) {
     qr = null;   // no QR is survivable; the URL still works
   }
 
-  return { urls, primary, qr, hasLan: urls.length > 0 };
+  return { urls, primary, qr, hasLan: lan.length > 0, isPublic: !!publicUrl };
 }

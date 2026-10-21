@@ -5,6 +5,8 @@ import express from 'express';
 import { Server } from 'socket.io';
 import { Room } from './room.js';
 import { buildInvite } from './invite.js';
+import { admits, makeInviteKey } from './access.js';
+import { openTunnel } from './tunnel.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT ?? 3000);
@@ -14,6 +16,27 @@ app.use(express.static(path.join(__dirname, '..', 'public'), { extensions: ['htm
 
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
+
+// `npm run share` puts the table on the internet through a tunnel. A key in
+// the link then keeps out whoever else stumbles on the address.
+const SHARE = !!process.env.SHARE;
+let tunnel = null;
+let shareError = null;
+if (SHARE) {
+  try {
+    tunnel = await openTunnel(PORT);
+  } catch (err) {
+    shareError = err.message;
+  }
+}
+
+// With a key set, only links that carry it get a seat — see access.js.
+const INVITE_KEY = process.env.INVITE_KEY || (tunnel ? makeInviteKey() : null);
+io.use((socket, next) => {
+  const { address, headers, auth } = socket.handshake;
+  if (admits({ address, headers, auth }, INVITE_KEY)) return next();
+  next(new Error('bad-invite'));
+});
 
 const room = new Room({
   send: (socketId, channel, payload) => io.to(socketId).emit(channel, payload),
@@ -57,7 +80,7 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => room.leave(socket.id));
 });
 
-const invite = await buildInvite(PORT);
+const invite = await buildInvite(PORT, { publicUrl: tunnel?.url ?? null, key: INVITE_KEY });
 room.invite = invite;
 
 server.listen(PORT, '0.0.0.0', () => {
@@ -66,7 +89,17 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log('');
   console.log(`  이 컴퓨터    \x1b[36mhttp://localhost:${PORT}\x1b[0m`);
   for (const url of invite.urls) {
-    console.log(`  같은 와이파이  \x1b[1m\x1b[36m${url}\x1b[0m  ← 친구들에게 알려주세요`);
+    const label = tunnel && url === invite.primary ? '어디서든   ' : '같은 와이파이';
+    console.log(`  ${label}  \x1b[1m\x1b[36m${url}\x1b[0m  ← 친구들에게 알려주세요`);
+  }
+  if (tunnel) {
+    console.log('');
+    console.log('  링크를 아는 사람은 누구나 들어올 수 있습니다. 믿는 사람에게만 보내세요.');
+  }
+  if (shareError) {
+    console.log('');
+    console.log(`  \x1b[33m공개 링크를 만들지 못했습니다:\x1b[0m ${shareError}`);
+    console.log('  같은 와이파이 주소로는 그대로 할 수 있습니다.');
   }
   if (!invite.hasLan) {
     console.log('  네트워크에 연결되어 있지 않아 LAN 주소를 찾지 못했습니다.');
@@ -77,9 +110,13 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log('');
 });
 
+// However the process ends — even a crash — take cloudflared down with it.
+process.on('exit', () => tunnel?.close());
+
 for (const signal of ['SIGINT', 'SIGTERM']) {
   process.on(signal, () => {
     room.dispose();
+    tunnel?.close();
     server.close(() => process.exit(0));
     setTimeout(() => process.exit(0), 500).unref();
   });

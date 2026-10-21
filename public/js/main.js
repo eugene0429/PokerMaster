@@ -306,9 +306,18 @@ function renderActionButtons(s, act) {
 
   const min = act.minRaiseTo;
   const max = act.maxRaiseTo;
+  const unit = act.chipUnit || 1;
+  // The slider counts chips, not points: notch k is k chips of `unit`, with the
+  // two ends pinned to the minimum and the all-in, which may be odd amounts.
+  const lo = Math.floor(min / unit);
+  const hi = Math.ceil(max / unit);
+  const valueAt = (k) => (k <= lo ? min : k >= hi ? max : k * unit);
+  const notchOf = (v) => (v <= min ? lo : v >= max ? hi : Math.round(v / unit));
+  const snap = (v) => valueAt(notchOf(Math.min(max, Math.max(min, v))));
   if (raiseValue === null || raiseValue < min || raiseValue > max) {
-    raiseValue = Math.min(max, Math.max(min, Math.round(pot * 0.6 + s.hand.currentBet)));
+    raiseValue = snap(pot * 0.6 + s.hand.currentBet);
   }
+  raiseValue = snap(raiseValue);
 
   const panel = document.createElement('div');
   panel.className = 'raise-panel';
@@ -323,19 +332,19 @@ function renderActionButtons(s, act) {
 
   const slider = document.createElement('input');
   slider.type = 'range';
-  slider.min = String(min);
-  slider.max = String(max);
-  slider.step = String(Math.max(1, Math.round(s.config.bb / 2)));
+  slider.min = String(lo);
+  slider.max = String(hi);
+  slider.step = '1';
   slider.disabled = locked;
 
   const sync = () => {
-    slider.value = String(raiseValue);
+    slider.value = String(notchOf(raiseValue));
     amount.textContent = formatChips(raiseValue);
     slider.style.setProperty('--fill', `${max > min ? ((raiseValue - min) / (max - min)) * 100 : 100}%`);
     raiseBtn.querySelector('small').textContent = raiseValue >= max ? '올인' : formatChips(raiseValue);
   };
 
-  slider.addEventListener('input', () => { raiseValue = Number(slider.value); sync(); });
+  slider.addEventListener('input', () => { raiseValue = valueAt(Number(slider.value)); sync(); });
 
   for (const [label, fraction] of [['½팟', 0.5], ['⅔팟', 0.667], ['팟', 1], ['올인', null]]) {
     const b = document.createElement('button');
@@ -344,8 +353,7 @@ function renderActionButtons(s, act) {
     b.textContent = label;
     b.disabled = locked;
     b.addEventListener('click', () => {
-      const target = fraction === null ? max : s.hand.currentBet + Math.round(pot * fraction);
-      raiseValue = Math.min(max, Math.max(min, target));
+      raiseValue = fraction === null ? max : snap(s.hand.currentBet + pot * fraction);
       sync();
     });
     quick.appendChild(b);
@@ -557,8 +565,11 @@ function paintInvite() {
   $('inviteQr').innerHTML = invite.qr ?? '';
   $('inviteQr').hidden = !invite.qr;
   const others = invite.urls.slice(1);
-  $('inviteAlt').textContent = invite.hasLan
-    ? (others.length ? `안 되면 이 주소도 시도해 보세요: ${others.join(', ')}` : '')
+  $('inviteSub').textContent = invite.isPublic
+    ? '이 링크만 있으면 어디서든 들어올 수 있습니다. 링크를 아는 사람은 누구나 들어오니 믿는 사람에게만 보내세요.'
+    : '같은 와이파이에 있는 친구가 아래 주소를 열거나, 폰 카메라로 QR을 찍으면 바로 들어옵니다.';
+  $('inviteAlt').textContent = invite.hasLan || invite.isPublic
+    ? (others.length ? `같은 와이파이라면 이 주소도 됩니다: ${others.join(', ')}` : '')
     : '이 컴퓨터가 네트워크에 연결되어 있지 않아 친구를 부를 주소를 찾지 못했습니다.';
 }
 

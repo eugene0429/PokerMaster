@@ -256,8 +256,7 @@ Difficulty is the same engine run more or less carefully:
 
 Measured with `npm run arena` (seed 1, 36,000 duplicate hands per lineup): Hard pros win
 **+383 bb/100** against a field of casual bots, each difficulty step is a statistically significant
-improvement, and the 95th-percentile decision time is under 7 ms. Details are in the
-[pro bot design doc](docs/superpowers/specs/2026-09-27-pro-bots-design.md).
+improvement, and the 95th-percentile decision time is under 7 ms.
 
 ## Under the hood
 
@@ -277,9 +276,6 @@ public/   Static client with no build step. Draws from snapshots, animates from 
 test/     vitest: engine unit tests plus integration tests that play a full hand over sockets.
 tools/    Bot arena and the macOS desktop launcher.
 ```
-
-Design docs (in Korean): [poker master](docs/superpowers/specs/2026-09-14-poker-master-design.md),
-[pro bots](docs/superpowers/specs/2026-09-27-pro-bots-design.md).
 
 ## Tests
 

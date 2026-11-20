@@ -7,3 +7,7 @@ node_modules/
 # Launcher build output (npm run launcher rebuilds it)
 tools/build/
 tools/PokerMaster.icns
+
+# Internal notes: design docs, plans and agent instructions stay local
+docs/superpowers/
+CLAUDE.md

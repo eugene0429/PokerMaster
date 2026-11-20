@@ -1,7 +1,7 @@
 {
   "name": "poker-master",
   "version": "1.0.0",
-  "description": "LAN 텍사스 홀덤 연습 테이블 (최대 10인 + AI 봇)",
+  "description": "A no-limit Texas Hold'em practice table for friends on the same network (up to 10 seats + AI bots)",
   "type": "module",
   "scripts": {
     "start": "node server/index.js",

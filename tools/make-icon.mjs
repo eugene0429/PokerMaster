@@ -164,4 +164,4 @@ for (const size of [16, 32, 64, 128, 256, 512, 1024]) {
 
 const icns = path.join(TOOLS, 'PokerMaster.icns');
 execFileSync('iconutil', ['-c', 'icns', iconset, '-o', icns]);
-console.log(`아이콘 생성 완료: ${icns}`);
+console.log(`Icon written: ${icns}`);

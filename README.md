@@ -1,248 +1,303 @@
 # PokerMaster
 
-같은 와이파이에 있는 친구들과 브라우저만으로 하는 **노리밋 텍사스 홀덤 연습 테이블**.
-최대 10석, 사람이 모자라면 AI 봇으로 채운다. 설치도 로그인도 없다.
+A **no-limit Texas Hold'em practice table** for friends on the same Wi-Fi, played in the browser.
+Up to 10 seats, AI bots fill the empty ones, and there's nothing to install on the players' side:
+no app, no account, no login.
 
-## 실행
+The interface is in **English** by default, with a one-click switch to **Korean (한국어)**.
+
+## Quick start
+
+Requires [Node.js](https://nodejs.org) 18 or newer.
 
 ```bash
 npm install
 npm start
 ```
 
-터미널에 이렇게 뜬다:
+The terminal prints something like:
 
 ```
-  PokerMaster 실행 중
+  PokerMaster is running
 
-  이 컴퓨터    http://localhost:3000
-  같은 와이파이  http://192.168.0.12:3000  ← 친구들에게 알려주세요
+  This computer  http://localhost:3000
+  Same Wi-Fi     http://192.168.0.12:3000  ← share this with your friends
 ```
 
-접속하면 **로비**가 뜬다. 닉네임을 넣으면 바로 명단에 나타나고, 들어온 친구들이 실시간으로
-쌓인다. 기다리는 동안 **채팅**으로 이야기할 수 있다.
+Open the address, pick a nickname, and you're in the **lobby**. Friends who open the same-Wi-Fi
+address show up in the lobby as they arrive, and everyone can **chat** while waiting.
+**Invite** shows the address and a **QR code**, so a friend can join by pointing a phone camera at the screen.
 
-`친구 초대`를 누르면 **접속 주소와 QR 코드**가 뜬다. 친구는 폰 카메라로 찍기만 하면 들어온다.
+The first person in is the **host**. Only the host picks the game mode, bots, blinds and starting
+stack, then presses **Start game**. Everyone in the lobby sits down at once: the host in seat 0,
+friends in the order they arrived, bots in the remaining seats. Until then, friends see
+*Waiting for the host to start*.
 
-첫 사람이 **호스트**다. 호스트만 게임 방식 · 봇 인원 · 블라인드 · 시작 스택을 정하고
-`게임 시작`을 누른다. 그러면 **로비에 있는 전원이 한 번에 자리에 앉는다** — 호스트가 0번,
-친구들이 들어온 순서대로, 봇이 나머지를 채운다. 친구들 화면에는 그동안
-`호스트가 시작하기를 기다리는 중`이 뜬다.
+The table has ten chairs, so **the bot limit shrinks as friends join**: with 3 friends in the lobby,
+at most 6 bots fit. If the host had picked more, the count drops automatically.
 
-**봇 상한은 로비 인원에 맞춰 줄어든다.** 자리가 10개뿐이라, 친구가 3명 들어오면 봇은 최대
-6명까지만 넣을 수 있다. 이미 그보다 많이 잡아뒀다면 자동으로 내려간다.
+People who arrive after the game starts can take an empty seat in a cash or timed game. In a
+tournament they can only watch.
 
-게임이 시작된 뒤에 들어온 사람은 캐시 게임이면 빈자리에 앉을 수 있고, 토너먼트면 관전만 된다.
+To use a different port: `PORT=4000 npm start`.
 
-채팅은 게임 중에도 된다 — 화면 오른쪽 아래 `채팅` 버튼을 누르면 펼쳐지고, 접혀 있는 동안
-온 메시지 수가 뱃지로 뜬다.
+### Language
 
-포트를 바꾸려면 `PORT=4000 npm start`.
+Use the **한국어 / English** button in the top-right corner of the main menu or the top bar
+(on a phone it lives under **Settings**). The choice is saved per browser and switches the
+whole screen live, mid-hand included. Each player picks their own language: the server sends
+message codes rather than sentences, so table notices and errors show up in each player's chosen language.
 
-### 다른 곳에 있는 친구와 하기 (링크 초대)
+### Playing with friends elsewhere (link invite)
 
-같은 와이파이가 아니어도 링크 하나로 부를 수 있다. 처음 한 번만 설치:
+Friends don't have to be on your Wi-Fi. Install [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/) once:
 
 ```bash
 brew install cloudflared
 ```
 
-그다음부터는 `npm start` 대신:
+Then start with:
 
 ```bash
 npm run share
 ```
 
-터미널에 `https://…trycloudflare.com/?k=…` 주소가 찍힌다. 이걸 보내면 LTE든 다른 집이든 들어온다.
-게임 화면의 "친구 초대" QR도 이 주소로 바뀐다. 계정은 필요 없다.
+The terminal prints an `https://…trycloudflare.com/?k=…` address. Send it to anyone, on mobile
+data or in another city, and they can join. The in-game invite QR code switches to this address too.
+No Cloudflare account is needed.
 
-- 링크 끝의 `?k=…`가 초대 키다. 키 없이 주소만 알아낸 사람은 못 들어온다. 이 컴퓨터에서 여는 화면만 키 없이 들어온다.
-- 주소와 키는 **켤 때마다 바뀐다**. 서버를 다시 켜면 링크를 다시 보내야 한다.
-- 이 컴퓨터가 서버다. 잠자기에 들어가거나 창을 닫으면 게임이 끝난다.
-- cloudflared가 없거나 터널이 안 열리면 경고를 한 줄 찍고 평소처럼 같은 와이파이 모드로 뜬다.
+- The `?k=…` at the end is the invite key. Someone who finds the address without the key can't
+  get in. Only screens opened on the host computer itself skip the key.
+- The address and key **change every time the server starts**, so send a fresh link after a restart.
+- Your computer is the server. If it sleeps or you close the terminal, the game ends.
+- If cloudflared is missing or the tunnel fails, the server prints a one-line warning and starts in
+  same-Wi-Fi mode as usual.
 
-### 바탕화면에서 바로 실행 (macOS)
+### Desktop launcher (macOS)
 
-터미널을 거치지 않고 아이콘 하나로 열고 싶으면 한 번만 이렇게 한다:
+To start the game from an icon instead of a terminal, run this once:
 
 ```bash
 npm run launcher
 ```
 
-바탕화면에 **PokerMaster** 아이콘이 생긴다. 더블클릭하면 터미널이 열리면서 서버가
-**링크 초대 모드(`npm run share`)** 로 뜨고 브라우저가 자동으로 게임 화면을 연다.
-터미널의 '어디서든' 주소(또는 게임 화면의 "친구 초대")를 보내면 된다.
-cloudflared가 없으면 처음 실행할 때 설치할지 묻고, 설치하지 않으면 같은 와이파이 모드로 뜬다.
-**창을 닫거나 Ctrl+C를 누르면 게임이 끝난다.**
+A **PokerMaster** icon appears on the Desktop. Double-clicking it opens a terminal, starts the server
+in **link invite mode** (`npm run share`), and opens the game in your browser. Share the *Anywhere*
+address from the terminal (or the in-game Invite). If cloudflared is missing, the launcher offers to
+install it; if you decline, it starts in same-Wi-Fi mode. **Closing the window or pressing Ctrl+C ends the game.**
 
-이미 서버가 켜져 있으면 두 번째를 띄우지 않고 브라우저만 연다. 다른 곳에 깔고 싶으면
-`npm run launcher -- ~/원하는/폴더`.
+If the server is already running, the launcher just opens the browser. To install it elsewhere:
+`npm run launcher -- ~/some/folder`.
 
-아이콘은 `tools/make-icon.mjs`가 벡터로 그려 `.icns`로 굽는다 — 받아올 이미지 파일이 없다.
-런처 내용을 고치려면 `tools/launcher.template.command`를 고치고 `npm run launcher`를 다시 돌린다.
-바탕화면에 놓인 건 저장소 경로가 박힌 사본이라 직접 고쳐봐야 다음 설치 때 덮인다.
+The icon is drawn as vectors by `tools/make-icon.mjs` and baked into an `.icns`, so there are no image
+files to download. To change the launcher, edit `tools/launcher.template.command` and run
+`npm run launcher` again: the Desktop copy has the repository path baked in and gets overwritten on reinstall.
 
-### 친구가 접속이 안 될 때
+### When a friend can't connect
 
-- **같은 공유기에 있는지** 먼저 확인한다. 한 명이 LTE/5G면 안 된다.
-- **macOS 방화벽**: 시스템 설정 → 네트워크 → 방화벽에서 `node`의 들어오는 연결을 허용한다.
-  `npm start`를 처음 실행하면 허용 여부를 묻는 팝업이 뜨는데, 거기서 "허용"을 누르면 된다.
-- **Windows 방화벽**: 첫 실행 때 뜨는 대화상자에서 "개인 네트워크"를 체크하고 허용한다.
-- 주소가 여러 개 찍히면 `192.168.`이나 `10.`으로 시작하는 걸 쓴다.
+- Check that you are **on the same router**. A phone on mobile data won't reach a LAN address
+  (use `npm run share` instead).
+- **macOS firewall**: System Settings → Network → Firewall, allow incoming connections for `node`.
+  The first `npm start` usually shows a prompt; choose *Allow*.
+- **Windows firewall**: in the dialog on first run, tick *Private networks* and allow.
+- If several addresses are printed, use the one starting with `192.168.` or `10.`.
 
-## 게임 방식
+## Game modes
 
-메인 메뉴에서 셋 중 하나를 고른다.
+Pick one on the main menu:
 
-| 방식 | 끝나는 조건 | 블라인드 |
+| Mode | How it ends | Blinds |
 |---|---|---|
-| **토너먼트** | 마지막 한 명이 우승 | 정해진 주기마다 오름 |
-| **시간 제한** | 정한 시간이 지나면 칩 1위가 우승 | 정해진 주기마다 오름 |
-| **캐시 게임** | 리바인이 무제한이면 끝나지 않음 | 고정 |
+| **Tournament** | Last player standing wins | Rise on a clock |
+| **Timed** | When time runs out, the chip leader wins | Rise on a clock |
+| **Cash game** | Never, with unlimited rebuys | Fixed |
 
-**리바인 횟수**도 함께 정한다 — `없음` `1회` `2회` `3회` `무제한`. 규칙은 세 방식 모두 같다:
+You also pick the **number of rebuys**: `None`, `1x`, `2x`, `3x` or `Unlimited`. The rule is the
+same in every mode:
 
-> 칩이 0이 되면, 리바인이 남았으면 다시 사서 들어오고, 남지 않았으면 탈락한다.
+> When your stack hits 0, you buy back in if you have rebuys left, and you're out if you don't.
 >
-> 리바인 금액은 블라인드를 따라 커진다: **시작 스택 × 지금 BB ÷ 처음 BB**. 100BB로 시작했으면
-> 언제 리바인해도 100BB로 돌아온다. 블라인드가 고정인 캐시 게임은 늘 시작 스택이다.
-> 게임 도중 새로 앉는 사람과 봇도 같은 금액으로 들어온다.
+> A rebuy grows with the blinds: **starting stack × current BB ÷ starting BB**. Start at 100 BB and
+> every rebuy brings you back to 100 BB. In a cash game the blinds are fixed, so a rebuy is always
+> the starting stack. Players and bots who sit down mid-game get the same amount.
 
-**봇도 예외가 없다.** 횟수를 다 쓴 봇은 자리에서 내려오고 순위에 기록된다. 무제한이면
-아무도 탈락하지 않으므로 캐시 게임은 끝나지 않는다 — 횟수를 정하면 캐시도 최후의 1인으로
-끝난다. 기본값은 방식을 고를 때 따라오고(토너먼트·시간제한은 `없음`, 캐시는 `무제한`),
-직접 고른 뒤에는 방식을 바꿔도 유지된다.
+**Bots get no exemption.** A bot that runs out of rebuys leaves the table and is recorded in the
+standings. With unlimited rebuys nobody is ever knocked out, so a cash game never ends; set a limit
+and a cash game also ends with the last player standing. Each mode brings its own default
+(`None` for tournament and timed, `Unlimited` for cash) until you pick one yourself; after that,
+your choice sticks when you switch modes.
 
-블라인드는 **레벨마다 2배**가 된다 — 50/100이면
-`50/100 → 100/200 → 200/400 → 400/800 → 800/1600 …` 상승 주기는 5·10·15분 중에 고른다.
-카지노 시계(레벨당 약 1.5배)보다 가파른데, 그게 의도다. 연습 세션이 사람들이 아직 앉아
-있는 동안 숏스택 국면까지 도달해야 한다.
+**Blind structure** (tournament and timed):
 
-**블라인드는 핸드 도중에는 절대 안 바뀐다.** 레벨이 올라갈 때가 되면 진행 중인 핸드를 마치고
-다음 핸드부터 적용한다. 중간에 바꾸면 이미 액션한 사람의 최소 레이즈 기준이 흔들린다.
+- **Standard 1.5x**: what a live casino clock does, about 1.5x per level.
+  `50/100 → 100/200 → 150/300 → 200/400 → 300/600 → 400/800 → 600/1200 …`
+- **Turbo 2x**: every level doubles, reaching the short-stack phase in about five levels.
+  `50/100 → 100/200 → 200/400 → 400/800 → 800/1600 …`
 
-상단바에 **경과 시간 · 현재 레벨과 블라인드 · 다음 레벨까지 남은 시간**이 뜬다. 서버는 기준
-시각만 보내고 화면이 매초 그린다 — 클라이언트가 초를 세면 탭이 절전될 때 어긋난다.
+Levels last 5, 10 or 15 minutes; a timed game runs 30, 60 or 90 minutes in total.
 
-토너먼트가 시작된 뒤에는 새로 앉을 수 없다(관전은 된다). 끝나면 순위표가 뜨고, 호스트가
-`새 게임`을 누르면 전원이 메인 메뉴로 돌아간다. 게임 도중에 그만두고 싶으면 호스트가
-**설정 → 게임 끝내고 메인 메뉴로**를 누르면 된다(두 번 눌러야 실행된다).
+**Blinds never change mid-hand.** When a level is due, the current hand finishes and the new blinds
+apply from the next one. Changing them mid-hand would shift the minimum raise under players who have
+already acted.
 
-서버를 다시 켜면 열려 있던 페이지는 **스스로 새로고침한다.** 그러지 않으면 낡은 화면이
-남아서, 예전 화면이 보내지 않는 설정을 서버가 기본값으로 메워 엉뚱한 방식으로 게임이
-열린다. 자리는 토큰으로 유지되므로 새로고침해도 잃는 것이 없다.
+The top bar shows **elapsed time, the current level and blinds, and the time to the next level**.
+The server sends only reference timestamps and the screen draws the countdown every second; counting
+on the client would drift whenever a browser tab goes to sleep.
 
-## 하는 법
+When a game ends, the standings appear. The host presses **New game** to send everyone back to the
+main menu. To stop a game early, the host uses **Settings → End game and return to menu** (it asks for
+a second press).
 
-- 테이블을 연 사람이 **호스트**다. 호스트는 **빈 자리를 그냥 누르면 그 자리에 봇이 앉는다.**
-  우측 상단 **설정**에서 블라인드·시작 스택·제한 시간도 바꿀 수 있다. 호스트가 나가면 다음 사람에게 넘어간다.
-- 앉은 사람이 2명 이상이면 3초 뒤 자동으로 핸드가 시작되고, 끝나면 5초 뒤 다음 핸드가 돈다.
-- 같은 닉네임을 쓰면 뒤에 들어온 사람이 `유진 2`가 된다. 동명이인이 있어도 헷갈리지 않는다.
-- 연결이 끊긴 사람의 이름 옆에는 `⚠`가 붙는다. 2분 안에 안 돌아오면 자리가 비워진다.
-- 칩이 떨어지면 다음 핸드 전에 자동으로 리바인된다. 연습용이라 제한이 없다.
-- 자기 차례에는 30초가 주어진다. 넘기면 체크할 수 있으면 체크, 아니면 폴드된다.
-  **연속 두 번 넘기면 자리 비움으로 바뀌어** 다음 핸드부터 건너뛴다. 아무 액션이나 하면 풀린다.
-  자리를 뜬 사람 때문에 테이블 전체가 30초씩 멈추지 않게 하기 위함이다.
-- 호스트는 **어느 자리든 `×`를 눌러 비울 수 있다.** 봇이든 사라진 친구든 마찬가지다.
-- 호스트는 상단바의 **일시정지**로 게임을 세울 수 있다. 턴 제한 시간, 블라인드 레벨,
-  시간제한 모드의 총 시간이 **함께 멈춘다** — 하나라도 계속 흐르면 쉬는 값을 누군가 치른다.
-  재개하면 정확히 멈춘 지점부터 이어진다. 멈춰 있는 동안에도 채팅은 된다.
-- **새로고침하거나 와이파이가 끊겨도 자리와 칩은 그대로다.** 2분 안에 돌아오면 복구된다.
+When the server restarts, open pages **reload themselves**. Otherwise a stale page could start a game
+with settings it never sent, and the server would fill them in with defaults. Seats are held by a
+token, so reloading costs nothing.
 
-### 단축키
+## How to play
 
-| 키 | 동작 |
+- The host can **click any empty seat to put a bot there**, and can change blinds, starting stack and
+  turn time under **Settings**. If the host leaves, the next player becomes host.
+- With 2 or more players seated, a hand starts after 3 seconds; the next one starts 5 seconds after
+  a hand ends.
+- Two players with the same nickname are told apart: the second becomes `Alex 2`.
+- A disconnected player is marked with `⚠`. If they don't come back within 2 minutes, the seat is cleared.
+- You get 30 seconds per turn (adjustable). Time out and you check if you can, otherwise fold.
+  **Time out twice in a row and you're sitting out**, skipped from the next hand until you act again.
+  This keeps one absent player from stalling the whole table.
+- The host can **clear any seat with `×`**, bot or vanished friend.
+- The host can **pause** from the top bar. The turn clock, the blind level and the timed game's total
+  clock **all stop together**; if any one kept running, somebody would pay for the break. Resume
+  carries on exactly where it stopped. Chat still works while paused.
+- **Refreshing or dropping off the Wi-Fi keeps your seat and chips** for 2 minutes.
+
+### Keyboard shortcuts
+
+| Key | Action |
 |---|---|
-| `F` | 폴드 |
-| `C` | 체크 / 콜 |
-| `R` | 설정한 금액으로 레이즈 |
+| `F` | Fold |
+| `C` | Check / call |
+| `R` | Raise to the amount on the slider |
 
-### 상단 버튼
+### Top bar buttons
 
-- `◆` — 4색 덱 (♠검정 ♥빨강 ♦파랑 ♣초록). 슈트 구분이 헷갈릴 때 켠다.
-- `♪` — 소리 켜기/끄기.
+- `◆`: four-color deck (♠ black, ♥ red, ♦ blue, ♣ green), for when suits are hard to tell apart.
+- `♪`: sound on/off.
+- `한국어` / `English`: switch language.
 
-## 카드가 깔리는 속도
+## Pacing the reveal
 
-화면은 서버보다 **일부러 뒤처진다.** 서버는 끝난 결과를 한 번에 보내기 때문이다 — 올인
-런아웃이면 턴·리버·양쪽 패·팟이 전부 한 스냅샷에 담겨 온다. 그대로 그리면 아무도 무슨
-일이 일어났는지 못 본다. 그래서 딜러 속도로 재생한다:
+The screen deliberately **lags behind the server**. The server sends the finished result in one go:
+in an all-in runout, the turn, the river, both hands and the pot all arrive in a single snapshot.
+Drawn as-is, nobody would see what happened. So the table replays it at a dealer's pace:
 
 ```
-플랍(한 동작) → 0.9초 → 턴 → 0.9초 → 리버 → 패 공개(한 명씩 0.6초) → 팟 이동 → 3.5초 → 순위표
+flop (one motion) → 0.9s → turn → 0.9s → river → hands turned over (0.6s each) → pot slides → 3.5s → standings
 ```
 
-턴과 리버는 각각 따로 깔리고, 쇼다운 패도 한 명씩 뒤집힌다. 순위표는 누가 무엇으로
-이겼는지 볼 시간을 준 뒤에 뜬다. 핸드 도중에 들어온 사람은 재생할 이야기가 없으므로
-현재 상태가 즉시 보인다.
+The turn and river land separately and showdown hands flip one at a time. The standings wait until
+everyone has had time to see who won with what. Someone who joins mid-hand has no story to replay,
+so they see the current state immediately.
 
-팟은 실제로 승자에게 미끄러질 때까지 펠트에 남아 있고, 그전까지 승자 스택도 올라가지
-않는다. 탈락한 사람도 패를 다 보여준 뒤, 다음 핸드가 시작될 때 자리에서 일어난다.
-그리고 액션 버튼은 누르는 즉시 잠긴다 — 응답을 기다리는 동안 한 번 더 누르면 차례가
-아닌 액션이 날아간다.
+The pot stays on the felt until it actually slides to the winner, and the winner's stack doesn't
+grow before that. A busted player shows their hand and leaves the seat when the next hand starts.
+The action buttons lock the moment you press one; otherwise a second press while waiting for the
+reply would send an action out of turn.
 
-## AI 봇
+## AI bots
 
-봇은 생성될 때 성향을 하나씩 받는다. **어느 봇이 어떤 성향인지는 화면에 표시하지 않는다** — 상대를
-읽어내는 게 연습이기 때문이다. 실제로 이렇게 갈린다:
+Choose a **bot mode** on the main menu:
 
-| 성향 | VPIP | PFR | 성격 |
+- **Casual**: a mix of casual bots with distinct personalities and pro bots at random difficulty.
+  The screen never says which is which; reading opponents is the point of practicing.
+- **Practice**: every bot is a pro, at the difficulty you choose (`Easy`, `Normal`, `Hard`).
+
+### Casual bots
+
+Each casual bot gets a personality. Bots at one table get different ones, so five bots means
+five different types:
+
+| Type | VPIP | PFR | Style |
 |---|---|---|---|
-| 니트 | 6% | 5% | 프리미엄만, 압박받으면 접는다 |
-| 락 | 19% | 6% | 넓게 보지만 거의 콜만 한다 |
-| TAG | 24% | 15% | 좁게 들어가되 들어가면 강하게 |
-| LAG | 45% | 34% | 넓게 들어가고 계속 압박한다 |
-| 콜링 스테이션 | 49% | 3% | 웬만하면 콜, 레이즈도 폴드도 잘 안 한다 |
-| 매니악 | 67% | 57% | 시도 때도 없이 레이즈하고 사이즈도 크다 |
-| 트리키 | 27% | 14% | 몬스터를 슬로플레이하고 섞어 친다 |
+| Nit | 6% | 5% | Premium hands only, folds under pressure |
+| Rock | 19% | 6% | Plays more hands, but mostly just calls |
+| TAG | 24% | 15% | Selective, and aggressive once in |
+| LAG | 45% | 34% | Plays wide and keeps up the pressure |
+| Calling station | 49% | 3% | Calls almost anything, rarely raises or folds |
+| Maniac | 67% | 57% | Raises constantly, and big |
+| Tricky | 27% | 14% | Slow-plays monsters, mixes it up |
 
-같은 테이블의 봇들은 서로 다른 성향을 받으므로, 5명을 앉히면 5가지 유형이 나온다.
-포지션도 본다 — 버튼에서는 레인지가 넓어지고 블라인드에서는 좁아진다.
+They respect position (wider on the button, tighter in the blinds) and they **bluff**, at a rate
+set by personality (maniac 60%, nit 3%) and by the situation:
 
-### 블러프
+- **Number of opponents**: heads-up, a bluff raise comes 17% of the time; against 3 or more, never.
+  Bluffing a crowd is a donation.
+- **Board texture**: an ace or a paired board makes the story believable, so more bluffs; three of
+  a suit means someone will call with a draw, so fewer.
+- **Position**: more often when acting last.
+- **Multiple streets**: a bot that bet the flop barrels the turn 53% of the time. One-street bluffs
+  are easy to read.
 
-봇은 블러프를 한다. 성향마다 빈도가 다르고(매니악 60% / 니트 3%), **상황도 본다**:
+They also check-raise and 3-bet bluff, semi-bluff with draws, and size bluffs smaller than value bets.
 
-- **상대 인원수** — 헤즈업이면 블러프 레이즈 17%, 상대가 3명 이상이면 0%. 여러 명에게
-  거는 블러프는 기부다.
-- **보드 텍스처** — A가 깔렸거나 페어 보드면 이야기가 그럴듯해지므로 늘리고, 같은 무늬
-  3장이면 누군가 드로우로 콜하므로 줄인다.
-- **포지션** — 마지막에 치는 자리에서 더 자주 건다.
-- **멀티 스트리트** — 플랍에 친 봇은 턴에도 이어서 친다(53%). 한 스트리트짜리 블러프는
-  읽히기 쉽다.
+### Pro bots
 
-체크레이즈·3벳 블러프도 한다. 드로우가 있으면 세미블러프 레이즈로 압박한다. 블러프
-사이즈는 밸류 벳보다 작게 잡는다 — 아무것도 없는 패로 크게 치면 콜당했을 때만 더 잃는다.
+Pro bots play like a real grinder: they **put opponents on ranges**, narrow those ranges as the hand
+goes on, compute **equity against the ranges by Monte Carlo**, and pick the action with the best
+expected value. They also track each opponent's tendencies over the session. Pro bots never peek:
+they read only their own hole cards, and a test pins that down.
 
-## 만듦새
+Four styles change the taste, not the skill: **solid**, **tight**, **loose** and **tricky**.
+Difficulty is the same engine run more or less carefully:
 
-카드는 이미지 파일이 아니라 SVG로 그려서 어떤 해상도에서도 선명하다.
-소리도 파일 없이 Web Audio로 합성한다. 받을 에셋이 하나도 없다.
+| Difficulty | Simulation budget | Range narrowing | Mistakes |
+|---|---|---|---|
+| Easy | 400 samples / 30 ms | No | 20% second-best |
+| Normal | 1,500 samples / 60 ms | Yes | 12% second-best |
+| Hard | 4,000 samples / 100 ms | Yes | None |
 
-**남의 홀카드는 서버가 아예 보내지 않는다.** 가려놓은 게 아니라 전송 자체를 하지 않으므로,
-친구가 개발자도구를 열어도 볼 것이 없다. 쇼다운에서 실제로 공개되는 카드만 내려간다.
+Measured with `npm run arena` (seed 1, 36,000 duplicate hands per lineup): Hard pros win
+**+383 bb/100** against a field of casual bots, each difficulty step is a statistically significant
+improvement, and the 95th-percentile decision time is under 7 ms. Details are in the
+[pro bot design doc](docs/superpowers/specs/2026-09-27-pro-bots-design.md).
 
-## 구조
+## Under the hood
+
+Cards are drawn as SVG rather than image files, so they stay sharp at any resolution. Sounds are
+synthesized with Web Audio. There are no assets to download.
+
+**The server never sends other players' hole cards.** They aren't hidden on the client, they are
+never transmitted, so a friend opening the browser dev tools finds nothing. Only cards actually
+shown at showdown are sent.
+
+## Project layout
 
 ```
-engine/   순수 포커 로직 — 핸드 랭킹, 사이드팟, 핸드 상태 머신. 소켓도 DOM도 모른다.
-server/   Socket.IO 레이어 — 좌석, 턴 시계, 봇, 플레이어별 상태 마스킹.
-public/   빌드 스텝 없는 정적 클라이언트. 스냅샷으로 그리고 이벤트로 움직인다.
-test/     vitest — 엔진 단위 테스트 + 소켓으로 한 핸드를 끝까지 도는 통합 테스트.
+engine/   Pure poker logic: hand ranking, side pots, the hand state machine, equity. No sockets, no DOM.
+server/   Socket.IO layer: seating, turn clock, bots, per-player state masking.
+public/   Static client with no build step. Draws from snapshots, animates from events.
+test/     vitest: engine unit tests plus integration tests that play a full hand over sockets.
+tools/    Bot arena and the macOS desktop launcher.
 ```
 
-설계 문서는 [docs/superpowers/specs/2026-09-14-poker-master-design.md](docs/superpowers/specs/2026-09-14-poker-master-design.md).
+Design docs (in Korean): [poker master](docs/superpowers/specs/2026-09-14-poker-master-design.md),
+[pro bots](docs/superpowers/specs/2026-09-27-pro-bots-design.md).
 
-## 테스트
+## Tests
 
 ```bash
 npm test
 ```
 
-핸드 평가(휠 스트레이트, 킥커 비교, 보드 플레이), 사이드팟(멀티 올인, 홀수 칩 분배),
-액션 검증(최소 레이즈, 올인 언더레이즈 뒤 레이즈 권한), 헤즈업 블라인드 순서까지 덮는다.
+Covers hand evaluation (wheel straights, kicker comparisons, playing the board), side pots (multiple
+all-ins, odd-chip splits), action validation (minimum raise, raise rights after an all-in under-raise),
+heads-up blind order, tournaments and rebuys, pause, the lobby and chat, and the bots.
 
-## 아직 없는 것
+```bash
+npm run arena
+```
 
-토너먼트(블라인드 상승·탈락), 핸드 히스토리 리플레이, 실시간 승률 표시, 플레이어 통계,
-여러 테이블. 게임 상태는 메모리에만 있어서 서버를 끄면 세션도 끝난다.
+Runs the headless bot arena and prints the results table.
+
+## Not there yet
+
+Hand history replay, a live odds display, player statistics, multiple tables. Game state lives only
+in memory, so stopping the server ends the session.

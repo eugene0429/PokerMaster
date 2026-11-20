@@ -8,14 +8,14 @@ export const STRUCTURES = {
   // 25/50 → 50/100 → 75/150 → 100/200 → 150/300 → 200/400 → 300/600 → …
   standard: {
     key: 'standard',
-    label: '정석',
+    label: 'Standard',
     multipliers: [1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128],
   },
   // A home-game shortcut: every level doubles. Reaches the short-stack part of
   // the game in about five levels, which ends a session fast.
   turbo: {
     key: 'turbo',
-    label: '터보',
+    label: 'Turbo',
     multipliers: [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096],
   },
 };

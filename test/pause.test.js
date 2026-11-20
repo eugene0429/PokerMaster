@@ -27,7 +27,7 @@ describe('pausing the game', () => {
   it('is nobody but the host to call', () => {
     const { room } = table();
     const guest = room.join({ socketId: 's2', name: 'Guest' });
-    expect(() => room.pause(guest.id)).toThrow(/호스트만/);
+    expect(() => room.pause(guest.id)).toThrow(/Only the host/);
     expect(room.paused).toBe(false);
   });
 
@@ -105,7 +105,7 @@ describe('pausing the game', () => {
     room.pause(host.id);
 
     room.hand.currentSeat = host.seat;
-    expect(() => room.act(host.id, { type: 'check' })).toThrow(/일시정지/);
+    expect(() => room.act(host.id, { type: 'check' })).toThrow(/paused/);
   });
 
   it('keeps the bots quiet', () => {
@@ -145,11 +145,11 @@ describe('pausing the game', () => {
 
     room.pause(host.id);
     expect(snapshotFor(room, host.id).game.paused).toBe(true);
-    expect(room.chat.recent().some((m) => m.text.includes('일시정지'))).toBe(true);
+    expect(room.chat.recent().some((m) => m.text.includes('paused'))).toBe(true);
 
     room.resume(host.id);
     expect(snapshotFor(room, host.id).game.paused).toBe(false);
-    expect(room.chat.recent().some((m) => m.text.includes('재개'))).toBe(true);
+    expect(room.chat.recent().some((m) => m.text.includes('resumed'))).toBe(true);
   });
 
   it('shrugs at pausing twice or resuming when nothing is stopped', () => {

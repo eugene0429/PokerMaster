@@ -4,6 +4,8 @@
  * appear as text on someone else's screen.
  */
 
+import { noticeText } from './i18n.js';
+
 const KEEP_ON_SCREEN = 120;
 
 /**
@@ -32,7 +34,7 @@ function messageEl(message, myName) {
 
   if (message.system) {
     li.className = 'chat-line system';
-    li.textContent = message.text;
+    li.textContent = noticeText(message);
     return li;
   }
 
@@ -48,6 +50,12 @@ function messageEl(message, myName) {
 
   li.append(who, body);
   return li;
+}
+
+/** Empty a list so the next render redraws every message, e.g. in a new language. */
+export function resetChat(listEl) {
+  listEl.innerHTML = '';
+  delete listEl.dataset.lastId;
 }
 
 /** Wire a chat form to a sender, with the empty-message case handled here. */

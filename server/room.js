@@ -11,6 +11,20 @@ import {
 import { ChatLog } from './chat.js';
 import { snapshotFor } from './view.js';
 
+/** How a game can end. The client words these in the viewer's language. */
+export const FINISH = { LAST_STANDING: 'lastStanding', TIME_UP: 'timeUp' };
+
+/**
+ * A refusal the player sees. The English message is for logs and tests; the
+ * code lets each client say it in the viewer's own language.
+ */
+function refuse(code, message, params) {
+  const err = new IllegalAction(message);
+  err.code = code;
+  if (params) err.params = params;
+  return err;
+}
+
 const DEFAULTS = {
   maxSeats: MAX_SEATS,
   sb: 50,
@@ -89,9 +103,9 @@ export class Room {
    * the pause cost somebody something.
    */
   pause(playerId) {
-    if (!this.isHost(playerId)) throw new IllegalAction('호스트만 일시정지할 수 있습니다');
+    if (!this.isHost(playerId)) throw refuse('hostOnlyPause', 'Only the host can pause the game');
     if (this.paused) return;
-    if (this.finished) throw new IllegalAction('이미 끝난 게임입니다');
+    if (this.finished) throw refuse('gameAlreadyOver', 'The game is already over');
 
     const now = Date.now();
     this.pausedAt = now;
@@ -104,12 +118,12 @@ export class Room {
     for (const t of this.timers.values()) clearTimeout(t.handle);
     this.timers.clear();
 
-    this.chat.system('게임이 일시정지되었습니다');
+    this.chat.system('The game is paused', { key: 'paused' });
     this.publish();
   }
 
   resume(playerId) {
-    if (!this.isHost(playerId)) throw new IllegalAction('호스트만 재개할 수 있습니다');
+    if (!this.isHost(playerId)) throw refuse('hostOnlyResume', 'Only the host can resume the game');
     if (!this.paused) return;
 
     // Push every clock forward by however long we stood still.
@@ -127,7 +141,7 @@ export class Room {
       this.pausedTurnRemaining = null;
     }
 
-    this.chat.system('게임이 재개되었습니다');
+    this.chat.system('The game has resumed', { key: 'resumed' });
     this.publish();
   }
 
@@ -159,7 +173,10 @@ export class Room {
     this.sockets.set(socketId, player.id);
     if (!this.hostId || !this.players.has(this.hostId)) this.hostId = player.id;
     if (!alreadyOpen) {
-      this.chat.system(returning ? `${player.name} 님이 돌아왔습니다` : `${player.name} 님이 들어왔습니다`);
+      this.chat.system(
+        returning ? `${player.name} is back` : `${player.name} joined`,
+        { key: returning ? 'returned' : 'joined', params: { name: player.name } },
+      );
     }
 
     this.transport.send(socketId, 'identity', {
@@ -181,7 +198,7 @@ export class Room {
     if (!player) return;
     player.connected = false;
     player.disconnectedAt = Date.now();
-    this.chat.system(`${player.name} 님이 나갔습니다`);
+    this.chat.system(`${player.name} left`, { key: 'left', params: { name: player.name } });
 
     if (player.seat === null) {
       this.forget(player);
@@ -221,8 +238,8 @@ export class Room {
   }
 
   /**
-   * Two friends both called 민준 are indistinguishable at the table, so the
-   * second one becomes "민준 2". Reconnecting players pass their own id and
+   * Two friends both called Minjun are indistinguishable at the table, so the
+   * second one becomes "Minjun 2". Reconnecting players pass their own id and
    * keep the name they already had.
    */
   uniqueName(name, excludeId = null) {
@@ -274,36 +291,36 @@ export class Room {
 
   renamePlayer(playerId, name) {
     const player = this.players.get(playerId);
-    if (!player) throw new IllegalAction('알 수 없는 플레이어입니다');
+    if (!player) throw refuse('unknownPlayer', 'Unknown player');
     const next = this.uniqueName(sanitizeName(name, player.name), player.id);
     if (next === player.name) return;
-    this.chat.system(`${player.name} 님이 이름을 ${next} 로 바꿨습니다`);
+    this.chat.system(`${player.name} is now ${next}`, { key: 'renamed', params: { from: player.name, to: next } });
     player.name = next;
     this.publish();
   }
 
   postChat(playerId, text) {
     const player = this.players.get(playerId);
-    if (!player) throw new IllegalAction('알 수 없는 플레이어입니다');
+    if (!player) throw refuse('unknownPlayer', 'Unknown player');
     const result = this.chat.post(player, text);
-    if (!result.ok) throw new IllegalAction(result.reason);
+    if (!result.ok) throw refuse(result.code, result.reason);
     this.publish();
   }
 
   sitDown(playerId, seat, name) {
     const player = this.players.get(playerId);
-    if (!player) throw new IllegalAction('알 수 없는 플레이어입니다');
-    if (player.seat !== null) throw new IllegalAction('이미 앉아 있습니다');
-    if (seat < 0 || seat >= this.config.maxSeats) throw new IllegalAction('그런 자리가 없습니다');
-    if (this.playerAtSeat(seat)) throw new IllegalAction('이미 누가 앉은 자리입니다');
-    if (this.finished) throw new IllegalAction('게임이 끝났습니다');
+    if (!player) throw refuse('unknownPlayer', 'Unknown player');
+    if (player.seat !== null) throw refuse('alreadySeated', 'You are already seated');
+    if (seat < 0 || seat >= this.config.maxSeats) throw refuse('noSuchSeat', 'There is no such seat');
+    if (this.playerAtSeat(seat)) throw refuse('seatTaken', 'Someone is already in that seat');
+    if (this.finished) throw refuse('gameOver', 'The game is over');
     if (this.isTournament() && this.startedAt) {
-      throw new IllegalAction('토너먼트가 이미 시작돼서 참가할 수 없습니다');
+      throw refuse('tournamentStarted', 'The tournament has already started, so you cannot join');
     }
     // A friend sitting at an empty table opens it, and the host loses the
     // settings screen mid-way. Until the host starts the game, nobody else sits.
     if (this.seatedPlayers().length === 0 && !this.isHost(playerId)) {
-      throw new IllegalAction('호스트가 게임을 시작하면 자리에 앉을 수 있습니다');
+      throw refuse('waitForHost', 'You can sit down once the host starts the game');
     }
 
     if (name) player.name = this.uniqueName(sanitizeName(name, player.name), player.id);
@@ -376,10 +393,10 @@ export class Room {
    * burning 30 seconds of everyone's time on every turn.
    */
   kick(playerId, seat) {
-    if (!this.isHost(playerId)) throw new IllegalAction('호스트만 내보낼 수 있습니다');
+    if (!this.isHost(playerId)) throw refuse('hostOnlyKick', 'Only the host can clear a seat');
     const target = this.playerAtSeat(Number(seat));
-    if (!target) throw new IllegalAction('그 자리는 비어 있습니다');
-    if (target.id === playerId) throw new IllegalAction('자기 자신은 "일어서기"로 나가세요');
+    if (!target) throw refuse('seatEmpty', 'That seat is empty');
+    if (target.id === playerId) throw refuse('kickSelf', 'Use "Stand up" to leave your own seat');
 
     const inLiveHand = this.hand && !this.hand.complete
       && this.hand.players[target.seat] && !this.hand.players[target.seat].folded;
@@ -400,17 +417,17 @@ export class Room {
   /* ------------------------------ bots ----------------------------- */
 
   addBot(playerId, seat = null) {
-    if (!this.isHost(playerId)) throw new IllegalAction('호스트만 봇을 추가할 수 있습니다');
-    if (this.finished) throw new IllegalAction('게임이 끝났습니다');
+    if (!this.isHost(playerId)) throw refuse('hostOnlyBot', 'Only the host can add bots');
+    if (this.finished) throw refuse('gameOver', 'The game is over');
 
     const target = seat === null || seat === undefined ? this.firstFreeSeat() : Number(seat);
-    if (target === null) throw new IllegalAction('테이블이 꽉 찼습니다');
+    if (target === null) throw refuse('tableFull', 'The table is full');
     if (!Number.isInteger(target) || target < 0 || target >= this.config.maxSeats) {
-      throw new IllegalAction('그런 자리가 없습니다');
+      throw refuse('noSuchSeat', 'There is no such seat');
     }
-    if (this.playerAtSeat(target)) throw new IllegalAction('이미 누가 앉은 자리입니다');
+    if (this.playerAtSeat(target)) throw refuse('seatTaken', 'Someone is already in that seat');
     if (this.isTournament() && this.startedAt) {
-      throw new IllegalAction('토너먼트가 이미 시작돼서 봇을 넣을 수 없습니다');
+      throw refuse('tournamentStartedBot', 'The tournament has already started, so no more bots can join');
     }
 
     const id = randomUUID();
@@ -433,10 +450,10 @@ export class Room {
   /* ---------------------------- settings --------------------------- */
 
   updateConfig(playerId, patch) {
-    if (!this.isHost(playerId)) throw new IllegalAction('호스트만 테이블 설정을 바꿀 수 있습니다');
-    if (this.hand && !this.hand.complete) throw new IllegalAction('핸드가 끝난 뒤에 바꿀 수 있습니다');
+    if (!this.isHost(playerId)) throw refuse('hostOnlyConfig', 'Only the host can change the table settings');
+    if (this.hand && !this.hand.complete) throw refuse('afterHand', 'Settings can change once the hand is over');
     if (RISING_BLINDS.has(this.config.mode) && (patch.sb || patch.bb)) {
-      throw new IllegalAction('블라인드가 오르는 게임에서는 블라인드를 직접 못 바꿉니다');
+      throw refuse('blindsOnClock', 'The blinds rise on a clock in this game and cannot be set by hand');
     }
     this.applyConfig(patch);
     if (!RISING_BLINDS.has(this.config.mode)) {
@@ -466,15 +483,15 @@ export class Room {
   }
 
   /**
-   * The host pressing 게임 시작: settings, a chair for everyone waiting in the
+   * The host pressing Start game: settings, a chair for everyone waiting in the
    * lobby, and the bots — in one step, so the table starts together rather
    * than filling up one person at a time.
    */
   startTable(playerId, opts = {}) {
     const player = this.players.get(playerId);
-    if (!player) throw new IllegalAction('알 수 없는 플레이어입니다');
-    if (this.seatedPlayers().length > 0) throw new IllegalAction('이미 열린 테이블이 있습니다');
-    if (!this.isHost(playerId)) throw new IllegalAction('호스트만 게임을 시작할 수 있습니다');
+    if (!player) throw refuse('unknownPlayer', 'Unknown player');
+    if (this.seatedPlayers().length > 0) throw refuse('tableOpen', 'A table is already open');
+    if (!this.isHost(playerId)) throw refuse('hostOnlyStart', 'Only the host can start the game');
 
     // The seats can empty without anyone ending the game — everyone stands up
     // or drops off — and the old game's clock stays behind. Built on top of it,
@@ -498,14 +515,17 @@ export class Room {
     const bots = clampInt(opts.bots, 0, room, 0);
     for (let i = 0; i < bots; i++) this.addBot(playerId);
 
-    this.chat.system(`게임 시작 — ${waiting.length}명 + 봇 ${bots}명`);
+    this.chat.system(
+      `Game on: ${waiting.length} players + ${bots} bots`,
+      { key: 'started', params: { players: waiting.length, bots } },
+    );
     this.maybeStartHand();
     this.publish();
   }
 
   /** Back to the main menu for everyone, with nothing carried over. */
   resetTable(playerId) {
-    if (!this.isHost(playerId)) throw new IllegalAction('호스트만 새 게임을 시작할 수 있습니다');
+    if (!this.isHost(playerId)) throw refuse('hostOnlyReset', 'Only the host can start a new game');
 
     for (const p of [...this.players.values()]) {
       if (p.isBot) { this.players.delete(p.id); this.tokens.delete(p.token); }
@@ -513,7 +533,7 @@ export class Room {
     }
     this.clearGame();
     this.config = { ...this.config, sb: this.baseBlinds.sb, bb: this.baseBlinds.bb };
-    this.chat.system('게임이 끝났습니다 — 메인 메뉴로 돌아갑니다');
+    this.chat.system('Game over: back to the main menu', { key: 'reset' });
     this.publish();
   }
 
@@ -635,10 +655,10 @@ export class Room {
 
   act(playerId, action) {
     const player = this.players.get(playerId);
-    if (!player || player.seat === null) throw new IllegalAction('자리에 앉아 있지 않습니다');
-    if (!this.hand || this.hand.complete) throw new IllegalAction('진행 중인 핸드가 없습니다');
-    if (this.hand.currentSeat !== player.seat) throw new IllegalAction('아직 차례가 아닙니다');
-    if (this.paused) throw new IllegalAction('일시정지 중입니다');
+    if (!player || player.seat === null) throw refuse('notSeated', 'You are not seated');
+    if (!this.hand || this.hand.complete) throw refuse('noHand', 'No hand is in progress');
+    if (this.hand.currentSeat !== player.seat) throw refuse('notYourTurn', 'It is not your turn yet');
+    if (this.paused) throw refuse('isPaused', 'The game is paused');
     player.timeouts = 0;
     this.applyPlayerAction(player, action);
   }
@@ -820,13 +840,13 @@ export class Room {
 
   checkForGameOver() {
     if (this.config.mode === MODE.TIMED && this.endsAt && Date.now() >= this.endsAt) {
-      this.finish('시간 종료');
+      this.finish(FINISH.TIME_UP);
       return true;
     }
     // With unlimited rebuys nobody is ever knocked out, so this cannot fire.
     const alive = this.seatedPlayers().filter((p) => p.stack > 0);
     if (this.startedAt && alive.length <= 1 && !this.rebuysAreUnlimited) {
-      this.finish('최후의 1인');
+      this.finish(FINISH.LAST_STANDING);
       return true;
     }
     return false;

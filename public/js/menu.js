@@ -5,6 +5,7 @@
 
 import { formatChips } from './chips.js';
 import { renderChat, bindChatForm } from './chat.js';
+import { t } from './i18n.js';
 
 const BLIND_PRESETS = [
   { sb: 25, bb: 50 },
@@ -13,67 +14,43 @@ const BLIND_PRESETS = [
   { sb: 200, bb: 400 },
 ];
 const STACK_PRESETS = [5000, 10000, 20000, 50000];
-const MODE_PRESETS = [
-  { key: 'tournament', label: '토너먼트' },
-  { key: 'timed', label: '시간 제한' },
-  { key: 'cash', label: '캐시 게임' },
-];
-const STRUCTURE_PRESETS = [
-  { key: 'standard', label: '정석 1.5배' },
-  { key: 'turbo', label: '터보 2배' },
-];
+const MODE_PRESETS = ['tournament', 'timed', 'cash'];
+const STRUCTURE_PRESETS = ['standard', 'turbo'];
 const LEVEL_PRESETS = [5, 10, 15];
 const TOTAL_PRESETS = [30, 60, 90];
-const REBUY_PRESETS = [
-  { value: 0, label: '없음' },
-  { value: 1, label: '1회' },
-  { value: 2, label: '2회' },
-  { value: 3, label: '3회' },
-  { value: -1, label: '무제한' },
-];
+const REBUY_PRESETS = [0, 1, 2, 3, -1];
 const DEFAULT_REBUYS = { tournament: 0, timed: 0, cash: -1 };
-const BOT_MODE_PRESETS = [
-  { key: 'casual', label: '캐주얼' },
-  { key: 'practice', label: '연습' },
-];
-const BOT_SKILL_PRESETS = [
-  { key: 'easy', label: '쉬움' },
-  { key: 'normal', label: '보통' },
-  { key: 'hard', label: '어려움' },
-];
-const BOT_SKILL_LABEL = { easy: '쉬움', normal: '보통', hard: '어려움' };
-const BOT_MODE_BLURB = {
-  casual: '성격이 제각각인 일반 봇과 실력이 제각각인 프로 봇이 섞여 앉습니다. 누가 누군지는 알려주지 않습니다.',
-  practice: '모든 봇이 프로입니다. 레인지를 읽고 팟 오즈를 따지고, 테이블에서 당신의 버릇을 기억합니다.',
-};
+const BOT_MODE_PRESETS = ['casual', 'practice'];
+const BOT_SKILL_PRESETS = ['easy', 'normal', 'hard'];
+
+/** How many rebuys, in words: none, a count, or unlimited. */
+export function rebuyLabel(value) {
+  if (value === -1) return t('rebuy.unlimited');
+  if (value === 0) return t('rebuy.none');
+  return t('rebuy.count', { n: value });
+}
 
 /** The blurb has to describe the actual combination, not just the mode. */
 function blurbFor(mode, rebuys, structure = 'standard') {
   const unlimited = rebuys === -1;
   const fate = unlimited
-    ? '칩이 떨어지면 계속 리바인해서 탈락이 없습니다.'
+    ? t('blurb.fateUnlimited')
     : rebuys === 0
-      ? '칩을 잃으면 바로 탈락합니다.'
-      : `리바인 ${rebuys}회를 다 쓰면 탈락합니다.`;
+      ? t('blurb.fateNone')
+      : t('blurb.fateCount', { n: rebuys });
 
-  if (mode === 'cash') {
-    return `블라인드 고정. ${fate}${unlimited ? ' 끝없이 연습만 합니다.' : ' 마지막 한 명이 남으면 끝납니다.'}`;
-  }
+  if (mode === 'cash') return t('blurb.cash', { fate, unlimited });
   // Rebuys follow the blinds up, so a buy-back late in the game still plays.
-  const deeper = rebuys === 0 ? '' : ' 리바인은 블라인드가 오른 만큼 커져서 처음과 같은 깊이로 돌아옵니다.';
-  const climb = structure === 'turbo'
-    ? '블라인드가 레벨마다 2배가 됩니다'
-    : '블라인드가 레벨마다 1.5배씩 오릅니다';
+  const deeper = rebuys === 0 ? '' : t('blurb.deeper');
+  const climb = structure === 'turbo' ? t('blurb.climbTurbo') : t('blurb.climbStandard');
 
-  if (mode === 'timed') {
-    return `${climb}. 정한 시간이 지나면 칩 1위가 우승합니다. ${fate}${deeper}`;
-  }
-  return `${climb}. ${fate}${unlimited ? ' 탈락이 없어 저절로 끝나지는 않습니다.' : ' 마지막 한 명이 우승합니다.'}${deeper}`;
+  if (mode === 'timed') return t('blurb.timed', { climb, fate, deeper });
+  return t('blurb.tournament', { climb, fate, deeper, unlimited });
 }
 
 const $ = (id) => document.getElementById(id);
 
-export const MODE_LABEL = { tournament: '토너먼트', timed: '시간 제한', cash: '캐시 게임' };
+export const modeLabel = (mode) => t(`mode.${mode}`);
 
 const state = {
   screen: 'host',    // host | waiting | join
@@ -96,34 +73,34 @@ let handlers = {};
 export function initMenu(h) {
   handlers = h;
 
-  buildPresets($('modePresets'), MODE_PRESETS.map((m) => ({
-    label: m.label,
-    isActive: () => state.gameMode === m.key,
-    select: () => { state.gameMode = m.key; syncMode(); },
+  buildPresets($('modePresets'), MODE_PRESETS.map((key) => ({
+    label: () => modeLabel(key),
+    isActive: () => state.gameMode === key,
+    select: () => { state.gameMode = key; syncMode(); },
   })));
 
-  buildPresets($('structurePresets'), STRUCTURE_PRESETS.map((x) => ({
-    label: x.label,
-    isActive: () => state.structure === x.key,
-    select: () => { state.structure = x.key; syncBlurb(); },
+  buildPresets($('structurePresets'), STRUCTURE_PRESETS.map((key) => ({
+    label: () => t(`structure.${key}Preset`),
+    isActive: () => state.structure === key,
+    select: () => { state.structure = key; syncBlurb(); },
   })));
 
   buildPresets($('levelPresets'), LEVEL_PRESETS.map((m) => ({
-    label: `${m}분`,
+    label: () => t('menu.minutes', { n: m }),
     isActive: () => state.levelMinutes === m,
     select: () => { state.levelMinutes = m; },
   })));
 
   buildPresets($('totalPresets'), TOTAL_PRESETS.map((m) => ({
-    label: `${m}분`,
+    label: () => t('menu.minutes', { n: m }),
     isActive: () => state.totalMinutes === m,
     select: () => { state.totalMinutes = m; },
   })));
 
-  rebuyButtons = buildPresets($('rebuyPresets'), REBUY_PRESETS.map((r) => ({
-    label: r.label,
-    isActive: () => state.rebuys === r.value,
-    select: () => { state.rebuys = r.value; state.rebuysTouched = true; syncBlurb(); },
+  rebuyButtons = buildPresets($('rebuyPresets'), REBUY_PRESETS.map((value) => ({
+    label: () => rebuyLabel(value),
+    isActive: () => state.rebuys === value,
+    select: () => { state.rebuys = value; state.rebuysTouched = true; syncBlurb(); },
   })));
 
   buildPresets($('blindPresets'), BLIND_PRESETS.map((b, i) => ({
@@ -138,16 +115,16 @@ export function initMenu(h) {
     select: () => { state.stack = v; },
   })));
 
-  buildPresets($('botModePresets'), BOT_MODE_PRESETS.map((m) => ({
-    label: m.label,
-    isActive: () => state.botMode === m.key,
-    select: () => { state.botMode = m.key; syncBotMode(); },
+  buildPresets($('botModePresets'), BOT_MODE_PRESETS.map((key) => ({
+    label: () => t(`botMode.${key}`),
+    isActive: () => state.botMode === key,
+    select: () => { state.botMode = key; syncBotMode(); },
   })));
 
-  buildPresets($('botSkillPresets'), BOT_SKILL_PRESETS.map((x) => ({
-    label: x.label,
-    isActive: () => state.botSkill === x.key,
-    select: () => { state.botSkill = x.key; },
+  buildPresets($('botSkillPresets'), BOT_SKILL_PRESETS.map((key) => ({
+    label: () => t(`botSkill.${key}`),
+    isActive: () => state.botSkill === key,
+    select: () => { state.botSkill = key; },
   })));
 
   $('botMinus').addEventListener('click', () => setBots(state.bots - 1));
@@ -178,7 +155,7 @@ export function initMenu(h) {
 /** Difficulty only means something when every bot is a pro. */
 function syncBotMode() {
   $('botSkillRow').hidden = state.botMode !== 'practice';
-  $('botModeBlurb').textContent = BOT_MODE_BLURB[state.botMode];
+  $('botModeBlurb').textContent = t(`botMode.blurb.${state.botMode}`);
 }
 
 /** Only show the clock options the chosen mode actually uses. */
@@ -199,6 +176,10 @@ function syncBlurb() {
 }
 
 let rebuyButtons = [];
+/** Every preset group, so a language change can reword their buttons. */
+const presetGroups = [];
+
+const labelOf = (item) => (typeof item.label === 'function' ? item.label() : item.label);
 
 function buildPresets(host, items) {
   host.innerHTML = '';
@@ -206,7 +187,7 @@ function buildPresets(host, items) {
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'preset';
-    b.textContent = item.label;
+    b.textContent = labelOf(item);
     b.addEventListener('click', () => {
       item.select();
       buttons.forEach((btn, i) => btn.classList.toggle('on', items[i].isActive()));
@@ -215,7 +196,22 @@ function buildPresets(host, items) {
     return b;
   });
   buttons.forEach((btn, i) => btn.classList.toggle('on', items[i].isActive()));
-  return { buttons, items };
+  const group = { buttons, items };
+  presetGroups.push(group);
+  return group;
+}
+
+/** Reword everything the menu wrote itself, after the language changes. */
+export function relabelMenu() {
+  for (const { buttons, items } of presetGroups) {
+    buttons.forEach((btn, i) => { btn.textContent = labelOf(items[i]); });
+  }
+  syncBlurb();
+  syncBotMode();
+  // Only a menu that is on screen gets redrawn; a hidden one catches up when it reopens.
+  if ($('menu').hidden) return;
+  if (lastSnapshot) updateMenu(lastSnapshot);
+  else $('menuEnter').textContent = t('menu.enter');
 }
 
 function repaintPresets(group) {
@@ -278,7 +274,10 @@ export function hide() {
 }
 
 /** Re-read the table: are we setting one up, waiting on the host, or joining? */
+let lastSnapshot = null;
+
 export function updateMenu(snapshot) {
+  lastSnapshot = snapshot;
   if (!state.open) return;
   $('menu').hidden = false;
 
@@ -297,15 +296,15 @@ export function updateMenu(snapshot) {
   $('joinSummary').hidden = state.screen !== 'join';
 
   if (hosting) {
-    $('menuEnter').textContent = '게임 시작';
-    $('menuTagline').textContent = '친구가 다 모이면 시작하세요. 모두 함께 자리에 앉습니다.';
+    $('menuEnter').textContent = t('menu.start');
+    $('menuTagline').textContent = t('menu.taglineHost');
   } else if (state.screen === 'waiting') {
-    $('menuEnter').textContent = '호스트가 시작하기를 기다리는 중';
+    $('menuEnter').textContent = t('menu.waitHost');
     $('menuEnter').disabled = true;
-    $('menuTagline').textContent = '자리에 앉을 준비가 됐습니다. 그동안 채팅으로 이야기하세요.';
+    $('menuTagline').textContent = t('menu.taglineWaiting');
   } else {
-    $('menuEnter').textContent = '참가하기';
-    $('menuTagline').textContent = '이미 열려 있는 테이블입니다. 이름만 정하면 바로 앉습니다.';
+    $('menuEnter').textContent = t('menu.join');
+    $('menuTagline').textContent = t('menu.taglineJoin');
   }
 
   if (state.screen === 'join') {
@@ -313,25 +312,32 @@ export function updateMenu(snapshot) {
     const game = snapshot.game;
     const locked = game.mode === 'tournament' && game.startedAt !== null;
 
-    $('joinSummary').innerHTML = `
-      <div class="summary-row"><span>게임 방식</span><strong>${MODE_LABEL[game.mode]}</strong></div>
-      <div class="summary-row"><span>블라인드</span><strong>${formatChips(game.blinds.sb)} / ${formatChips(game.blinds.bb)}</strong></div>
-      <div class="summary-row"><span>시작 스택</span><strong>${formatChips(snapshot.config.startingStack)}</strong></div>
-      <div class="summary-row"><span>상승 폭</span><strong>${game.rising ? game.structureLabel : '고정'}</strong></div>
-      <div class="summary-row"><span>봇</span><strong>${snapshot.config.botMode === 'practice' ? `연습 · ${BOT_SKILL_LABEL[snapshot.config.botSkill]}` : '캐주얼'}</strong></div>
-      <div class="summary-row"><span>리바인</span><strong>${game.rebuysUnlimited ? '무제한' : (game.rebuys === 0 ? '없음' : `${game.rebuys}회`)}</strong></div>
-      <div class="summary-row"><span>앉은 사람</span><strong>${seated.length}명 (사람 ${humans})</strong></div>`;
+    const bots = snapshot.config.botMode === 'practice'
+      ? t('summary.botsPractice', { skill: t(`botSkill.${snapshot.config.botSkill}`) })
+      : t('summary.botsCasual');
+    const rows = [
+      [t('summary.mode'), modeLabel(game.mode)],
+      [t('summary.blinds'), `${formatChips(game.blinds.sb)} / ${formatChips(game.blinds.bb)}`],
+      [t('summary.stack'), formatChips(snapshot.config.startingStack)],
+      [t('summary.structure'), game.rising ? t(`structure.${game.structure ?? 'standard'}`) : t('summary.fixed')],
+      [t('summary.bots'), bots],
+      [t('summary.rebuys'), rebuyLabel(game.rebuysUnlimited ? -1 : game.rebuys)],
+      [t('summary.seated'), t('summary.seatedCount', { n: seated.length, humans })],
+    ];
+    $('joinSummary').innerHTML = rows
+      .map(([label, value]) => `<div class="summary-row"><span>${label}</span><strong>${value}</strong></div>`)
+      .join('');
 
     if (locked) {
       $('menuEnter').disabled = true;
-      $('menuEnter').textContent = '토너먼트 진행 중';
-      $('menuTagline').textContent = '이미 시작된 토너먼트에는 참가할 수 없습니다. 관전은 됩니다.';
+      $('menuEnter').textContent = t('menu.tournamentRunning');
+      $('menuTagline').textContent = t('menu.taglineLocked');
     } else if (free === 0) {
       $('menuEnter').disabled = true;
-      $('menuEnter').textContent = '자리가 없습니다';
+      $('menuEnter').textContent = t('menu.noSeats');
     } else {
       $('menuEnter').disabled = false;
-      $('menuEnter').textContent = '참가하기';
+      $('menuEnter').textContent = t('menu.join');
     }
   } else if (hosting) {
     $('menuEnter').disabled = false;
@@ -342,15 +348,15 @@ function renderLobby(snapshot, running) {
   const roster = snapshot.lobby ?? [];
   const seats = snapshot.config.maxSeats;
   $('lobbyLabel').textContent = running
-    ? `관전 ${roster.length}명`
-    : `참가자 ${roster.length} / ${seats}`;
+    ? t('menu.spectators', { n: roster.length })
+    : t('menu.players', { n: roster.length, max: seats });
 
   const list = $('lobbyList');
   list.innerHTML = '';
   if (roster.length === 0) {
     const empty = document.createElement('li');
     empty.className = 'lobby-empty';
-    empty.textContent = running ? '관전 중인 사람이 없습니다' : '아직 아무도 없습니다';
+    empty.textContent = running ? t('menu.noSpectators') : t('menu.empty');
     list.appendChild(empty);
     return;
   }
@@ -361,7 +367,7 @@ function renderLobby(snapshot, running) {
     if (member.isHost) {
       const crown = document.createElement('span');
       crown.className = 'crown';
-      crown.textContent = '호스트';
+      crown.textContent = t('menu.host');
       li.appendChild(crown);
     }
     const who = document.createElement('span');

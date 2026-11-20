@@ -33,7 +33,7 @@ export function openTunnel(port) {
       reject(new Error(message));
     };
 
-    const timer = setTimeout(() => fail('cloudflared가 30초 안에 주소를 주지 않았습니다.'), START_TIMEOUT_MS);
+    const timer = setTimeout(() => fail('cloudflared did not hand out an address within 30 seconds.'), START_TIMEOUT_MS);
 
     // cloudflared logs to stderr; watch both in case that ever changes.
     let buffered = '';
@@ -52,11 +52,11 @@ export function openTunnel(port) {
     child.stderr.setEncoding('utf8').on('data', onData);
 
     child.on('error', (err) => fail(err.code === 'ENOENT'
-      ? 'cloudflared가 설치되어 있지 않습니다 — brew install cloudflared'
-      : `cloudflared를 실행하지 못했습니다: ${err.message}`));
+      ? 'cloudflared is not installed. Run: brew install cloudflared'
+      : `Could not run cloudflared: ${err.message}`));
     child.on('exit', (code) => {
-      if (!settled) fail(`cloudflared가 종료되었습니다 (코드 ${code}).`);
-      else if (!closing) console.log('\n  \x1b[33m공개 링크가 끊어졌습니다.\x1b[0m 같은 와이파이 주소는 계속 됩니다.\n');
+      if (!settled) fail(`cloudflared exited (code ${code}).`);
+      else if (!closing) console.log('\n  \x1b[33mThe public link dropped.\x1b[0m The same-Wi-Fi address still works.\n');
     });
   });
 }

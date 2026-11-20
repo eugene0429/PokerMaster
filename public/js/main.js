@@ -5,12 +5,13 @@ import {
 import { initAnim, flyChips, localCenter, percentToLocal, sparkle } from './anim.js';
 import { formatChips } from './chips.js';
 import { setFourColor } from './cards.js';
-import { renderChat, bindChatForm } from './chat.js';
+import { renderChat, bindChatForm, resetChat } from './chat.js';
 import { createReveal } from './reveal.js';
 import { createActionLock } from './actionLock.js';
 import * as menu from './menu.js';
-import { MODE_LABEL } from './menu.js';
+import { modeLabel } from './menu.js';
 import * as sound from './sound.js';
+import { t, applyStatic, toggleLang, onLangChange, errorText } from './i18n.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -67,6 +68,7 @@ function playAwards(potAt) {
 
 /* ------------------------------ boot ------------------------------ */
 
+applyStatic();
 initAnim({ fx: refs.fx, table: refs.table });
 initRender(refs, {
   onSit: (seat) => net?.send('sit', { seat, name: savedName() }),
@@ -80,10 +82,10 @@ menu.initMenu({
     saveName(name);
     sound.unlock();
     const free = snapshot?.seats.findIndex((s) => s === null) ?? -1;
-    if (free < 0) return toast('빈 자리가 없습니다', 'error');
+    if (free < 0) return toast(t('toast.noSeat'), 'error');
     net?.send('sit', { seat: free, name });
   },
-  onWatch: () => toast('관전 중입니다 — 빈 자리를 누르면 앉을 수 있습니다'),
+  onWatch: () => toast(t('toast.watching')),
   onInvite: openInvite,
   onChat: (text) => net?.send('chat', { text }),
   onRename: (name) => { saveName(name); net?.send('rename', { name }); },
@@ -98,13 +100,13 @@ $('btnSound').textContent = sound.isMuted() ? '✕' : '♪';
 net = connect({
   onUpdate: handleUpdate,
   onIdentity: (p) => { invite = p.invite ?? null; paintInvite(); },
-  onError: (message) => {
+  onError: (message, code, params) => {
     actionLock.release();           // the action bounced; let them try again
-    toast(message, 'error');
+    toast(errorText(message, code, params), 'error');
     if (snapshot) renderDock(snapshot);
   },
   onStatus: (s) => {
-    if (s === 'disconnected') toast('연결이 끊겼습니다 — 다시 연결하는 중…', 'error');
+    if (s === 'disconnected') toast(t('toast.disconnected'), 'error');
   },
 });
 
@@ -149,12 +151,16 @@ function handleUpdate({ snapshot: next, events }) {
   if (lastPhase === 'finished' && snapshot.phase !== 'finished' && !snapshot.you?.seated) menu.reopen();
   lastPhase = snapshot.phase;
 
-  $('handLabel').textContent = snapshot.hand ? `#${snapshot.hand.handId} 핸드` : '대기 중';
-  $('btnStand').hidden = !snapshot.you?.seated;
+  paintTopLabels(snapshot);
+}
 
-  const watchers = snapshot.spectators.length;
+function paintTopLabels(s) {
+  $('handLabel').textContent = s.hand ? t('top.hand', { n: s.hand.handId }) : t('top.waiting');
+  $('btnStand').hidden = !s.you?.seated;
+
+  const watchers = s.spectators.length;
   $('spectatorLabel').hidden = watchers === 0;
-  $('spectatorLabel').textContent = `관전 ${watchers}명`;
+  $('spectatorLabel').textContent = t('top.watching', { n: watchers });
 }
 
 function captureChipPositions() {
@@ -211,13 +217,13 @@ function announceBustOuts(events, mySeat) {
   for (const e of events) {
     if (e.type === 'rebuy' && e.seat === mySeat) {
       // The amount follows the blinds, so say what is coming back.
-      const left = e.remaining === null ? '' : ` · ${e.remaining}회 남음`;
-      toast(`칩이 떨어져 리바인했습니다 — 스택 ${formatChips(e.stack)}${left}`);
+      const left = e.remaining === null ? '' : t('toast.rebuyLeft', { n: e.remaining });
+      toast(t('toast.rebuy', { stack: formatChips(e.stack), left }));
     }
     if (e.type === 'knockOut') {
       toast(e.seat === mySeat
-        ? '리바인을 모두 써서 탈락했습니다 — 관전으로 전환됩니다'
-        : `${e.name} 탈락`, e.seat === mySeat ? 'error' : '');
+        ? t('toast.youreOut')
+        : t('toast.out', { name: e.name }), e.seat === mySeat ? 'error' : '');
     }
   }
 }
@@ -231,11 +237,11 @@ function renderDock(s) {
   refs.heroStrip.innerHTML = '';
   if (hero?.seated) {
     addStrip(`${hero.name}`, '');
-    addStrip('스택', formatChips(displayStack(s, reveal.view(), hero.seat)));
-    if (s.hand) addStrip('팟', formatChips(s.hand.potTotal));
+    addStrip(t('dock.stack'), formatChips(displayStack(s, reveal.view(), hero.seat)));
+    if (s.hand) addStrip(t('dock.pot'), formatChips(s.hand.potTotal));
     const left = s.seats[hero.seat]?.rebuysLeft;
-    if (left !== null && left !== undefined) addStrip('리바인', `${left}회 남음`);
-    if (toAct?.toCall > 0) addStrip('콜 금액', formatChips(toAct.toCall), 'to-call');
+    if (left !== null && left !== undefined) addStrip(t('dock.rebuys'), t('dock.rebuysLeft', { n: left }));
+    if (toAct?.toCall > 0) addStrip(t('dock.toCall'), formatChips(toAct.toCall), 'to-call');
   }
 
   if (!toAct || s.game?.paused) {
@@ -250,7 +256,7 @@ function renderDock(s) {
       const add = document.createElement('button');
       add.type = 'button';
       add.className = 'act-btn check dock-cta';
-      add.innerHTML = '봇 추가<small>바로 시작하기</small>';
+      add.innerHTML = `${t('dock.addBot')}<small>${t('dock.addBotSub')}</small>`;
       add.addEventListener('click', () => net?.send('addBot'));
       refs.actions.appendChild(add);
     }
@@ -274,19 +280,19 @@ function addStrip(label, value, cls = '') {
 
 function dockNote(s) {
   if (s.game?.paused) {
-    return s.you?.isHost ? '일시정지 중 — 재개를 누르세요' : '일시정지 중입니다';
+    return s.you?.isHost ? t('dock.pausedHost') : t('dock.paused');
   }
-  if (s.game?.finished) return '게임이 끝났습니다';
-  if (!s.you?.seated) return '빈 자리를 눌러 앉으세요 — 관전 중입니다';
-  if (s.you.sittingOut) return '자리 비움 상태입니다';
-  if (needsPlayers(s)) return '혼자입니다 — 봇을 추가하거나 친구를 부르세요';
-  if (s.phase === 'idle') return '플레이어가 2명 이상이면 시작합니다';
-  if (s.phase === 'countdown') return '곧 시작합니다…';
+  if (s.game?.finished) return t('dock.finished');
+  if (!s.you?.seated) return t('dock.spectating');
+  if (s.you.sittingOut) return t('dock.sittingOut');
+  if (needsPlayers(s)) return t('dock.alone');
+  if (s.phase === 'idle') return t('dock.idle');
+  if (s.phase === 'countdown') return t('dock.countdown');
   if (s.hand && !s.hand.complete) {
     const who = s.seats[s.hand.currentSeat]?.name;
-    return who ? `${who} 님의 차례` : '진행 중';
+    return who ? t('dock.turnOf', { name: who }) : t('dock.inProgress');
   }
-  return '다음 핸드를 기다리는 중';
+  return t('dock.nextHand');
 }
 
 function renderActionButtons(s, act) {
@@ -294,12 +300,12 @@ function renderActionButtons(s, act) {
   refs.actions.innerHTML = '';
   const locked = actionLock.locked;
 
-  refs.actions.appendChild(button('fold', '폴드', '', () => send('fold'), locked));
+  refs.actions.appendChild(button('fold', t('act.fold'), '', () => send('fold'), locked));
 
   if (act.canCheck) {
-    refs.actions.appendChild(button('check', '체크', '', () => send('check'), locked));
+    refs.actions.appendChild(button('check', t('act.check'), '', () => send('check'), locked));
   } else {
-    refs.actions.appendChild(button('call', '콜', formatChips(act.toCall), () => send('call'), locked));
+    refs.actions.appendChild(button('call', t('act.call'), formatChips(act.toCall), () => send('call'), locked));
   }
 
   if (!act.canRaise) return;
@@ -341,12 +347,15 @@ function renderActionButtons(s, act) {
     slider.value = String(notchOf(raiseValue));
     amount.textContent = formatChips(raiseValue);
     slider.style.setProperty('--fill', `${max > min ? ((raiseValue - min) / (max - min)) * 100 : 100}%`);
-    raiseBtn.querySelector('small').textContent = raiseValue >= max ? '올인' : formatChips(raiseValue);
+    raiseBtn.querySelector('small').textContent = raiseValue >= max ? t('act.allIn') : formatChips(raiseValue);
   };
 
   slider.addEventListener('input', () => { raiseValue = valueAt(Number(slider.value)); sync(); });
 
-  for (const [label, fraction] of [['½팟', 0.5], ['⅔팟', 0.667], ['팟', 1], ['올인', null]]) {
+  const quickBets = [
+    [t('act.halfPot'), 0.5], [t('act.twoThirdsPot'), 0.667], [t('act.pot'), 1], [t('act.allIn'), null],
+  ];
+  for (const [label, fraction] of quickBets) {
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'quick-btn';
@@ -359,7 +368,7 @@ function renderActionButtons(s, act) {
     quick.appendChild(b);
   }
 
-  const raiseBtn = button('raise', act.isBet ? '벳' : '레이즈', formatChips(raiseValue),
+  const raiseBtn = button('raise', act.isBet ? t('act.bet') : t('act.raise'), formatChips(raiseValue),
     () => send('raise', raiseValue), locked);
 
   panel.append(top, slider);
@@ -438,13 +447,13 @@ function paintPause(s) {
   const running = s.seats.some(Boolean) && !game.finished;
 
   $('btnPause').hidden = !(running && s.you?.isHost);
-  $('btnPause').textContent = game.paused ? '재개' : '일시정지';
+  $('btnPause').textContent = game.paused ? t('top.resume') : t('top.pause');
   $('btnPause').classList.toggle('danger', !!game.paused);
 
   $('pauseVeil').hidden = !game.paused;
   $('pauseSub').textContent = s.you?.isHost
-    ? '재개를 누르면 이어서 진행됩니다'
-    : '호스트가 재개할 때까지 기다립니다';
+    ? t('pause.hostHint')
+    : t('pause.waitHost');
 }
 
 $('btnPause').addEventListener('click', () => {
@@ -482,7 +491,7 @@ function paintClock() {
   // The level prefix only means something once a game is actually running.
   $('blindsLabel').textContent = game.rising && game.startedAt
     ? `L${game.level + 1} · ${formatChips(game.blinds.sb)} / ${formatChips(game.blinds.bb)}`
-    : `블라인드 ${formatChips(game.blinds.sb)} / ${formatChips(game.blinds.bb)}`;
+    : t('top.blinds', { sb: formatChips(game.blinds.sb), bb: formatChips(game.blinds.bb) });
 
   const level = $('levelLabel');
   let text = null;
@@ -490,13 +499,15 @@ function paintClock() {
 
   if (game.mode === 'timed' && game.endsAt) {
     const left = game.endsAt - now;
-    text = left > 0 ? `종료까지 ${mmss(left)}` : '마지막 핸드';
+    text = left > 0 ? t('top.untilEnd', { time: mmss(left) }) : t('top.lastHand');
     urgent = left > 0 && left < 60_000;
   } else if (game.rising && game.levelEndsAt && game.nextBlinds) {
     const left = game.levelEndsAt - now;
     text = left > 0
-      ? `다음 ${formatChips(game.nextBlinds.sb)}/${formatChips(game.nextBlinds.bb)} · ${mmss(left)}`
-      : '다음 핸드부터 블라인드 상승';
+      ? t('top.nextLevel', {
+        sb: formatChips(game.nextBlinds.sb), bb: formatChips(game.nextBlinds.bb), time: mmss(left),
+      })
+      : t('top.levelUpNext');
     urgent = left > 0 && left < 60_000;
   }
 
@@ -520,10 +531,12 @@ function paintResults(s, ready) {
   resultsKey = key;
 
   $('resultsTitle').textContent = results.standings[0]
-    ? `${results.standings[0].name} 우승`
-    : '게임 종료';
-  $('resultsSub').textContent =
-    `${MODE_LABEL[s.game.mode]} · ${results.reason} · ${results.hands}핸드 · ${mmss(results.durationMs)}`;
+    ? t('results.winner', { name: results.standings[0].name })
+    : t('results.gameOver');
+  const reason = t(`reason.${results.reason}`);
+  $('resultsSub').textContent = [
+    modeLabel(s.game.mode), reason, t('results.hands', { n: results.hands }), mmss(results.durationMs),
+  ].join(' · ');
 
   $('standings').innerHTML = '';
   for (const row of results.standings) {
@@ -532,15 +545,15 @@ function paintResults(s, ready) {
     li.innerHTML = `
       <span class="place">${row.place}</span>
       <span class="who">${escapeHtml(row.name)}${row.isBot ? ' <span class="bot-mark">BOT</span>' : ''}</span>
-      <span class="chips">${row.stack > 0 ? formatChips(row.stack) : '탈락'}${
-        row.rebuysUsed ? `<span class="rebuy-mark">리바인 ${row.rebuysUsed}</span>` : ''
+      <span class="chips">${row.stack > 0 ? formatChips(row.stack) : t('results.out')}${
+        row.rebuysUsed ? `<span class="rebuy-mark">${t('results.rebuys', { n: row.rebuysUsed })}</span>` : ''
       }</span>`;
     $('standings').appendChild(li);
   }
 
   const host = !!s.you?.isHost;
   $('btnNewGame').disabled = !host;
-  $('btnNewGame').textContent = host ? '새 게임' : '호스트를 기다리는 중';
+  $('btnNewGame').textContent = host ? t('results.newGame') : t('results.waitHost');
   $('resultsModal').hidden = false;
 }
 
@@ -566,11 +579,11 @@ function paintInvite() {
   $('inviteQr').hidden = !invite.qr;
   const others = invite.urls.slice(1);
   $('inviteSub').textContent = invite.isPublic
-    ? '이 링크만 있으면 어디서든 들어올 수 있습니다. 링크를 아는 사람은 누구나 들어오니 믿는 사람에게만 보내세요.'
-    : '같은 와이파이에 있는 친구가 아래 주소를 열거나, 폰 카메라로 QR을 찍으면 바로 들어옵니다.';
+    ? t('invite.public')
+    : t('invite.lan');
   $('inviteAlt').textContent = invite.hasLan || invite.isPublic
-    ? (others.length ? `같은 와이파이라면 이 주소도 됩니다: ${others.join(', ')}` : '')
-    : '이 컴퓨터가 네트워크에 연결되어 있지 않아 친구를 부를 주소를 찾지 못했습니다.';
+    ? (others.length ? t('invite.alsoLan', { urls: others.join(', ') }) : '')
+    : t('invite.noNetwork');
 }
 
 function openInvite() {
@@ -586,9 +599,9 @@ $('inviteModal').addEventListener('click', (e) => {
 $('btnCopyUrl').addEventListener('click', async () => {
   try {
     await navigator.clipboard.writeText(invite?.primary ?? '');
-    toast('주소를 복사했습니다');
+    toast(t('invite.copied'));
   } catch {
-    toast('복사가 막혀 있습니다 — 주소를 길게 눌러 직접 복사해 주세요', 'error');
+    toast(t('invite.copyBlocked'), 'error');
   }
 });
 
@@ -645,13 +658,18 @@ $('btnSettings').addEventListener('click', () => {
   $('btnEndGame').disabled = !host;
   disarmEndGame();
 
-  $('settingsNote').textContent = !host
-    ? '호스트만 설정을 바꿀 수 있습니다.'
-    : rising
-      ? '블라인드는 레벨에 따라 자동으로 오릅니다. 나머지는 핸드가 끝난 뒤에 적용됩니다.'
-      : '핸드가 끝난 뒤에 적용됩니다.';
+  paintSettingsNote();
   $('settingsModal').hidden = false;
 });
+
+function paintSettingsNote() {
+  if (!snapshot) return;
+  $('settingsNote').textContent = !snapshot.you?.isHost
+    ? t('settings.noteGuest')
+    : snapshot.game?.rising
+      ? t('settings.noteRising')
+      : t('settings.noteHost');
+}
 
 $('btnCloseSettings').addEventListener('click', () => {
   $('settingsModal').hidden = true;
@@ -671,14 +689,14 @@ let endGameArmed = false;
 
 function disarmEndGame() {
   endGameArmed = false;
-  $('btnEndGame').textContent = '게임 끝내고 메인 메뉴로';
+  $('btnEndGame').textContent = t('settings.endGame');
   $('btnEndGame').classList.remove('armed');
 }
 
 $('btnEndGame').addEventListener('click', () => {
   if (!endGameArmed) {
     endGameArmed = true;
-    $('btnEndGame').textContent = '한 번 더 누르면 끝납니다';
+    $('btnEndGame').textContent = t('settings.endGameConfirm');
     $('btnEndGame').classList.add('armed');
     setTimeout(disarmEndGame, 5000);
     return;
@@ -707,6 +725,31 @@ let resizeRaf = null;
 window.addEventListener('resize', () => {
   if (resizeRaf) cancelAnimationFrame(resizeRaf);
   resizeRaf = requestAnimationFrame(() => { if (snapshot) paint(snapshot, reveal.view()); });
+});
+
+/* ---------------------------- language ----------------------------- */
+
+for (const id of ['btnLang', 'menuLang', 'settingsLang']) $(id).addEventListener('click', toggleLang);
+
+/** Everything on screen was worded when it was drawn, so draw it all again. */
+onLangChange(() => {
+  resetChat($('gameChatList'));
+  resetChat($('menuChatList'));
+  menu.relabelMenu();
+  disarmEndGame();
+  paintInvite();
+  if (!snapshot) return;
+  paint(snapshot, reveal.view());
+  renderDock(snapshot);
+  paintTableChat(snapshot);
+  paintTopLabels(snapshot);
+  paintClock();
+  paintPause(snapshot);
+  paintSettingsNote();
+  if (!$('resultsModal').hidden) {
+    resultsKey = null;
+    paintResults(snapshot, reveal.view().results);
+  }
 });
 
 function toast(message, kind = '') {

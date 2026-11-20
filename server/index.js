@@ -38,6 +38,11 @@ io.use((socket, next) => {
   next(new Error('bad-invite'));
 });
 
+/** The message, plus a code the client can translate when the room gave one. */
+function errorPayload(err) {
+  return { message: err.message, code: err.code ?? null, params: err.params ?? null };
+}
+
 const room = new Room({
   send: (socketId, channel, payload) => io.to(socketId).emit(channel, payload),
 });
@@ -45,11 +50,11 @@ const room = new Room({
 io.on('connection', (socket) => {
   const guard = (fn) => (payload) => {
     const playerId = room.playerIdForSocket(socket.id);
-    if (!playerId) return socket.emit('errorMsg', { message: '아직 접속 중입니다' });
+    if (!playerId) return socket.emit('errorMsg', { message: 'Still connecting', code: 'connecting' });
     try {
       fn(playerId, payload ?? {});
     } catch (err) {
-      socket.emit('errorMsg', { message: err.message });
+      socket.emit('errorMsg', errorPayload(err));
       // Whatever the client thought was true, resync it to the server's truth.
       room.publish();
     }
@@ -59,7 +64,7 @@ io.on('connection', (socket) => {
     try {
       room.join({ socketId: socket.id, token, name });
     } catch (err) {
-      socket.emit('errorMsg', { message: err.message });
+      socket.emit('errorMsg', errorPayload(err));
     }
   });
 
@@ -85,28 +90,28 @@ room.invite = invite;
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log('');
-  console.log('  \x1b[1m\x1b[32mPokerMaster\x1b[0m 실행 중');
+  console.log('  \x1b[1m\x1b[32mPokerMaster\x1b[0m is running');
   console.log('');
-  console.log(`  이 컴퓨터    \x1b[36mhttp://localhost:${PORT}\x1b[0m`);
+  console.log(`  This computer  \x1b[36mhttp://localhost:${PORT}\x1b[0m`);
   for (const url of invite.urls) {
-    const label = tunnel && url === invite.primary ? '어디서든   ' : '같은 와이파이';
-    console.log(`  ${label}  \x1b[1m\x1b[36m${url}\x1b[0m  ← 친구들에게 알려주세요`);
+    const label = tunnel && url === invite.primary ? 'Anywhere     ' : 'Same Wi-Fi   ';
+    console.log(`  ${label}  \x1b[1m\x1b[36m${url}\x1b[0m  ← share this with your friends`);
   }
   if (tunnel) {
     console.log('');
-    console.log('  링크를 아는 사람은 누구나 들어올 수 있습니다. 믿는 사람에게만 보내세요.');
+    console.log('  Anyone with the link can join. Only send it to people you trust.');
   }
   if (shareError) {
     console.log('');
-    console.log(`  \x1b[33m공개 링크를 만들지 못했습니다:\x1b[0m ${shareError}`);
-    console.log('  같은 와이파이 주소로는 그대로 할 수 있습니다.');
+    console.log(`  \x1b[33mCould not open a public link:\x1b[0m ${shareError}`);
+    console.log('  The same-Wi-Fi address still works.');
   }
   if (!invite.hasLan) {
-    console.log('  네트워크에 연결되어 있지 않아 LAN 주소를 찾지 못했습니다.');
+    console.log('  Not connected to a network, so there is no LAN address to share.');
   }
   console.log('');
-  console.log('  게임 화면의 "친구 초대"를 누르면 QR 코드로도 부를 수 있습니다.');
-  console.log('  종료하려면 Ctrl+C');
+  console.log('  Press "Invite" in the game for a QR code your friends can scan.');
+  console.log('  Press Ctrl+C to stop');
   console.log('');
 });
 

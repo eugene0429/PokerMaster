@@ -85,7 +85,7 @@ function gameState(room) {
     level: room.level,
     maxLevel: room.maxLevel,
     structure: room.config.structure,
-    structureLabel: STRUCTURES[room.config.structure]?.label ?? '정석',
+    structureLabel: STRUCTURES[room.config.structure]?.label ?? 'Standard',
     rising,
     blinds: { sb: room.config.sb, bb: room.config.bb },
     nextBlinds: rising && room.level < room.maxLevel

@@ -131,7 +131,7 @@ describe('starting the game together', () => {
     const room = makeRoom();
     room.join({ socketId: 's1', name: 'Host' });
     const ann = room.join({ socketId: 's2', name: 'Ann' });
-    expect(() => room.startTable(ann.id, { name: 'Ann', bots: 1 })).toThrow(/호스트만/);
+    expect(() => room.startTable(ann.id, { name: 'Ann', bots: 1 })).toThrow(/Only the host/);
   });
 
   it('gives everyone the same starting stack', () => {
@@ -156,14 +156,14 @@ describe('chat', () => {
   it('refuses an empty message', () => {
     const room = makeRoom();
     const host = room.join({ socketId: 's1', name: 'Host' });
-    expect(() => room.postChat(host.id, '    ')).toThrow(/빈 메시지/);
+    expect(() => room.postChat(host.id, '    ')).toThrow(/empty message/);
   });
 
   it('slows down a flood', () => {
     const room = makeRoom();
     const host = room.join({ socketId: 's1', name: 'Host' });
     room.postChat(host.id, '하나');
-    expect(() => room.postChat(host.id, '둘')).toThrow(/천천히/);
+    expect(() => room.postChat(host.id, '둘')).toThrow(/Slow down/);
   });
 
   it('announces arrivals, departures and the start of the game', () => {
@@ -174,9 +174,28 @@ describe('chat', () => {
     room.startTable(host.id, { name: 'Host', bots: 1, mode: MODE.CASH });
 
     const system = room.chat.recent().filter((m) => m.system).map((m) => m.text);
-    expect(system.some((t) => t.includes('Ann 님이 들어왔습니다'))).toBe(true);
-    expect(system.some((t) => t.includes('Ann 님이 나갔습니다'))).toBe(true);
-    expect(system.some((t) => t.startsWith('게임 시작'))).toBe(true);
+    expect(system.some((t) => t.includes('Ann joined'))).toBe(true);
+    expect(system.some((t) => t.includes('Ann left'))).toBe(true);
+    expect(system.some((t) => t.startsWith('Game on'))).toBe(true);
+  });
+
+  it('tags each notice with a key so every client can word it in its own language', () => {
+    const room = makeRoom();
+    const host = room.join({ socketId: 's1', name: 'Host' });
+    room.join({ socketId: 's2', name: 'Ann' });
+    room.startTable(host.id, { name: 'Host', bots: 2, mode: MODE.CASH });
+
+    const notices = room.chat.recent().filter((m) => m.system);
+    expect(notices.find((m) => m.key === 'joined' && m.params.name === 'Ann')).toBeTruthy();
+    expect(notices.find((m) => m.key === 'started')).toMatchObject({ params: { players: 2, bots: 2 } });
+  });
+
+  it('gives each refusal a code the client can translate', () => {
+    const room = makeRoom();
+    const host = room.join({ socketId: 's1', name: 'Host' });
+    let caught = null;
+    try { room.postChat(host.id, '   '); } catch (err) { caught = err; }
+    expect(caught?.code).toBe('chatEmpty');
   });
 
   it('reaches every client through the snapshot', () => {

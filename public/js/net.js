@@ -38,7 +38,7 @@ export function connect({ onUpdate, onIdentity, onError, onStatus }) {
     // Retrying will not help; the key is not going to change by itself.
     socket.disconnect();
     sessionStorage.removeItem(INVITE_KEY);
-    onError?.('초대 링크가 맞지 않습니다 — 주최자에게 링크를 다시 받아 주세요');
+    onError?.(null, 'badInvite');
   });
 
   socket.on('identity', (payload) => {
@@ -58,7 +58,7 @@ export function connect({ onUpdate, onIdentity, onError, onStatus }) {
     onIdentity?.(payload);
   });
   socket.on('update', onUpdate);
-  socket.on('errorMsg', ({ message }) => onError?.(message));
+  socket.on('errorMsg', ({ message, code, params }) => onError?.(message, code, params));
 
   return {
     socket,

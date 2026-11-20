@@ -143,7 +143,7 @@ describe('two players over the network', () => {
     waiting.send('action', { type: 'fold' });
 
     await waitFor(() => waiting.errors.length > 0, 10000);
-    expect(waiting.errors[0]).toMatch(/차례|turn/);
+    expect(waiting.errors[0]).toMatch(/turn/);
 
     a.close();
     b.close();
@@ -182,7 +182,7 @@ describe('two players over the network', () => {
     watcher.errors.length = 0;
     watcher.send('sit', { seat: 8 });
     await waitFor(() => watcher.errors.length > 0, 10000);
-    expect(watcher.errors[0]).toMatch(/토너먼트/);
+    expect(watcher.errors[0]).toMatch(/tournament/);
 
     // Watching still works — the snapshot keeps flowing.
     expect(watcher.snapshot.seats.filter(Boolean).length).toBe(3);

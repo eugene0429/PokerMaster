@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
-<title>PokerMaster — 홀덤 연습 테이블</title>
+<title>PokerMaster: Hold'em practice table</title>
 <link rel="stylesheet" href="css/style.css" />
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>♠</text></svg>" />
 </head>
@@ -15,16 +15,17 @@
       <span class="info-chip clock" id="clockLabel" hidden>00:00</span>
       <span class="info-chip blinds" id="blindsLabel">—</span>
       <span class="info-chip" id="levelLabel" hidden></span>
-      <span class="info-chip" id="handLabel">대기 중</span>
+      <span class="info-chip" id="handLabel">Waiting</span>
       <span class="info-chip ghost" id="spectatorLabel" hidden></span>
     </div>
     <div class="topbar-actions">
-      <button class="icon-btn" id="btnFourColor" title="4색 덱">◆</button>
-      <button class="icon-btn" id="btnSound" title="소리">♪</button>
-      <button class="ghost-btn" id="btnPause" hidden>일시정지</button>
-      <button class="ghost-btn" id="btnInviteTop">친구 초대</button>
-      <button class="ghost-btn" id="btnSettings">설정</button>
-      <button class="ghost-btn" id="btnStand" hidden>일어서기</button>
+      <button class="icon-btn" id="btnFourColor" title="Four-color deck" data-i18n-title="top.fourColor">◆</button>
+      <button class="icon-btn" id="btnSound" title="Sound" data-i18n-title="top.sound">♪</button>
+      <button class="ghost-btn lang-btn" id="btnLang" type="button" title="Switch language" data-i18n="lang.switch" data-i18n-title="lang.switchTitle">한국어</button>
+      <button class="ghost-btn" id="btnPause" hidden>Pause</button>
+      <button class="ghost-btn" id="btnInviteTop" data-i18n="top.invite">Invite</button>
+      <button class="ghost-btn" id="btnSettings" data-i18n="top.settings">Settings</button>
+      <button class="ghost-btn" id="btnStand" hidden data-i18n="top.stand">Stand up</button>
     </div>
   </header>
 
@@ -43,8 +44,8 @@
       <div class="pause-veil" id="pauseVeil" hidden>
         <div class="pause-card">
           <div class="pause-mark">❚❚</div>
-          <div class="pause-title">일시정지</div>
-          <div class="pause-sub" id="pauseSub">호스트가 재개할 때까지 기다립니다</div>
+          <div class="pause-title" data-i18n="pause.title">Paused</div>
+          <div class="pause-sub" id="pauseSub">Waiting for the host to resume</div>
         </div>
       </div>
     </div>
@@ -58,21 +59,22 @@
 
 <div class="menu-backdrop" id="menu">
   <div class="menu-card">
+    <button class="ghost-btn tiny lang-btn menu-lang" id="menuLang" type="button" title="Switch language" data-i18n="lang.switch" data-i18n-title="lang.switchTitle">한국어</button>
     <div class="menu-head">
       <div class="menu-mark">♠</div>
       <h1>PokerMaster</h1>
-      <p class="menu-tagline" id="menuTagline">같은 와이파이에 있는 친구들과 하는 홀덤 연습 테이블</p>
+      <p class="menu-tagline" id="menuTagline">A Hold'em practice table for friends on the same Wi-Fi</p>
     </div>
 
     <label class="field">
-      <span>닉네임</span>
-      <input id="menuName" maxlength="16" autocomplete="off" placeholder="예: 유진" />
+      <span data-i18n="menu.nickname">Nickname</span>
+      <input id="menuName" maxlength="16" autocomplete="off" placeholder="e.g. Alex" data-i18n-placeholder="menu.nicknamePlaceholder" />
     </label>
 
     <div class="lobby" id="lobbyPanel">
       <div class="lobby-head">
-        <span class="setup-label" id="lobbyLabel">참가자 0 / 10</span>
-        <button class="ghost-btn tiny" type="button" id="lobbyInvite">친구 초대</button>
+        <span class="setup-label" id="lobbyLabel">Players 0 / 10</span>
+        <button class="ghost-btn tiny" type="button" id="lobbyInvite" data-i18n="top.invite">Invite</button>
       </div>
       <ul class="lobby-list" id="lobbyList"></ul>
     </div>
@@ -80,136 +82,140 @@
     <div class="chat" id="menuChat">
       <ul class="chat-list" id="menuChatList"></ul>
       <form class="chat-form" id="menuChatForm">
-        <input id="menuChatInput" maxlength="200" autocomplete="off" placeholder="메시지 보내기" />
-        <button class="ghost-btn tiny" type="submit">보내기</button>
+        <input id="menuChatInput" maxlength="200" autocomplete="off" placeholder="Send a message" data-i18n-placeholder="menu.chatPlaceholder" />
+        <button class="ghost-btn tiny" type="submit" data-i18n="menu.send">Send</button>
       </form>
     </div>
 
     <div class="setup" id="hostSetup">
       <div class="setup-row stack">
-        <span class="setup-label">게임 방식</span>
+        <span class="setup-label" data-i18n="menu.gameMode">Game mode</span>
         <div class="preset-row" id="modePresets"></div>
         <p class="mode-blurb" id="modeBlurb"></p>
       </div>
       <div class="setup-row stack" id="structureRow">
-        <span class="setup-label">블라인드 상승 폭</span>
+        <span class="setup-label" data-i18n="menu.structure">Blind increase</span>
         <div class="preset-row" id="structurePresets"></div>
       </div>
       <div class="setup-row stack" id="levelRow">
-        <span class="setup-label">상승 주기</span>
+        <span class="setup-label" data-i18n="menu.levelLength">Level length</span>
         <div class="preset-row" id="levelPresets"></div>
       </div>
       <div class="setup-row stack" id="totalRow" hidden>
-        <span class="setup-label">총 시간</span>
+        <span class="setup-label" data-i18n="menu.totalTime">Total time</span>
         <div class="preset-row" id="totalPresets"></div>
       </div>
       <div class="setup-row stack">
-        <span class="setup-label">리바인</span>
+        <span class="setup-label" data-i18n="menu.rebuys">Rebuys</span>
         <div class="preset-row" id="rebuyPresets"></div>
       </div>
       <div class="setup-row">
-        <span class="setup-label">AI 봇</span>
+        <span class="setup-label" data-i18n="menu.aiBots">AI bots</span>
         <div class="stepper">
-          <button type="button" id="botMinus" aria-label="봇 줄이기">−</button>
+          <button type="button" id="botMinus" aria-label="Fewer bots" data-i18n-aria="menu.fewerBots">−</button>
           <span id="botCount">4</span>
-          <button type="button" id="botPlus" aria-label="봇 늘리기">+</button>
+          <button type="button" id="botPlus" aria-label="More bots" data-i18n-aria="menu.moreBots">+</button>
         </div>
       </div>
       <div class="setup-row stack">
-        <span class="setup-label">봇 모드</span>
+        <span class="setup-label" data-i18n="menu.botMode">Bot mode</span>
         <div class="preset-row" id="botModePresets"></div>
         <p class="mode-blurb" id="botModeBlurb"></p>
       </div>
       <div class="setup-row stack" id="botSkillRow" hidden>
-        <span class="setup-label">봇 난이도</span>
+        <span class="setup-label" data-i18n="menu.botSkill">Bot difficulty</span>
         <div class="preset-row" id="botSkillPresets"></div>
       </div>
       <div class="setup-row stack">
-        <span class="setup-label">블라인드</span>
+        <span class="setup-label" data-i18n="menu.blinds">Blinds</span>
         <div class="preset-row" id="blindPresets"></div>
       </div>
       <div class="setup-row stack">
-        <span class="setup-label">시작 스택</span>
+        <span class="setup-label" data-i18n="menu.startingStack">Starting stack</span>
         <div class="preset-row" id="stackPresets"></div>
       </div>
     </div>
 
     <div class="join-summary" id="joinSummary" hidden></div>
 
-    <button class="primary-btn big" id="menuEnter">게임 입장</button>
+    <button class="primary-btn big" id="menuEnter">Enter game</button>
 
     <div class="menu-foot">
-      <button class="ghost-btn" type="button" id="menuInvite">친구 초대</button>
-      <button class="ghost-btn" type="button" id="menuWatch">관전하기</button>
+      <button class="ghost-btn" type="button" id="menuInvite" data-i18n="top.invite">Invite</button>
+      <button class="ghost-btn" type="button" id="menuWatch" data-i18n="menu.watch">Watch</button>
     </div>
   </div>
 </div>
 
 <div class="modal-backdrop" id="inviteModal" hidden>
   <div class="modal invite-modal">
-    <h2>친구 초대</h2>
-    <p class="modal-sub" id="inviteSub">같은 와이파이에 있는 친구가 아래 주소를 열거나, 폰 카메라로 QR을 찍으면 바로 들어옵니다.</p>
+    <h2 data-i18n="invite.title">Invite friends</h2>
+    <p class="modal-sub" id="inviteSub">Friends on the same Wi-Fi can open the address below, or scan the QR code with their phone camera.</p>
     <div class="qr-box" id="inviteQr"></div>
     <div class="url-row">
       <code id="inviteUrl">—</code>
-      <button type="button" class="ghost-btn" id="btnCopyUrl">복사</button>
+      <button type="button" class="ghost-btn" id="btnCopyUrl" data-i18n="invite.copy">Copy</button>
     </div>
     <p class="hint" id="inviteAlt"></p>
     <div class="modal-actions">
-      <button type="button" class="ghost-btn" id="btnCloseInvite">닫기</button>
+      <button type="button" class="ghost-btn" id="btnCloseInvite" data-i18n="common.close">Close</button>
     </div>
   </div>
 </div>
 
 <div class="modal-backdrop" id="settingsModal" hidden>
   <form class="modal" id="settingsForm">
-    <h2>테이블 설정</h2>
-    <p class="modal-sub" id="settingsNote">호스트만 바꿀 수 있고, 핸드가 끝난 뒤에 적용됩니다.</p>
+    <h2 data-i18n="settings.title">Table settings</h2>
+    <p class="modal-sub" id="settingsNote">Only the host can change these. They apply once the hand is over.</p>
     <div class="field-row">
-      <label class="field"><span>스몰 블라인드</span><input id="cfgSb" type="number" min="1" step="1" /></label>
-      <label class="field"><span>빅 블라인드</span><input id="cfgBb" type="number" min="2" step="1" /></label>
+      <label class="field"><span data-i18n="settings.sb">Small blind</span><input id="cfgSb" type="number" min="1" step="1" /></label>
+      <label class="field"><span data-i18n="settings.bb">Big blind</span><input id="cfgBb" type="number" min="2" step="1" /></label>
     </div>
     <div class="field-row">
-      <label class="field"><span>시작 스택</span><input id="cfgStack" type="number" min="100" step="100" /></label>
-      <label class="field"><span>제한 시간(초)</span><input id="cfgTurn" type="number" min="5" max="300" step="5" /></label>
+      <label class="field"><span data-i18n="settings.stack">Starting stack</span><input id="cfgStack" type="number" min="100" step="100" /></label>
+      <label class="field"><span data-i18n="settings.turn">Turn time (sec)</span><input id="cfgTurn" type="number" min="5" max="300" step="5" /></label>
     </div>
     <div class="bot-row">
-      <button class="ghost-btn" type="button" id="btnAddBot">봇 추가</button>
-      <span class="hint">빈 자리에 AI 한 명이 앉습니다</span>
+      <button class="ghost-btn lang-btn" type="button" id="settingsLang" data-i18n="lang.switch">한국어</button>
+      <span class="hint" data-i18n="settings.languageHint">Language for this screen only</span>
     </div>
     <div class="bot-row">
-      <button class="ghost-btn danger" type="button" id="btnEndGame">게임 끝내고 메인 메뉴로</button>
-      <span class="hint">모두 자리에서 일어나고 봇은 사라집니다</span>
+      <button class="ghost-btn" type="button" id="btnAddBot" data-i18n="settings.addBot">Add bot</button>
+      <span class="hint" data-i18n="settings.addBotHint">An AI player takes an empty seat</span>
+    </div>
+    <div class="bot-row">
+      <button class="ghost-btn danger" type="button" id="btnEndGame">End game and return to menu</button>
+      <span class="hint" data-i18n="settings.endGameHint">Everyone stands up and the bots leave</span>
     </div>
     <div class="modal-actions">
-      <button class="ghost-btn" type="button" id="btnCloseSettings">닫기</button>
-      <button class="primary-btn" type="submit">저장</button>
+      <button class="ghost-btn" type="button" id="btnCloseSettings" data-i18n="common.close">Close</button>
+      <button class="primary-btn" type="submit" data-i18n="settings.save">Save</button>
     </div>
   </form>
 </div>
 
 <div class="modal-backdrop" id="resultsModal" hidden>
   <div class="modal results-modal">
-    <h2 id="resultsTitle">게임 종료</h2>
+    <h2 id="resultsTitle">Game over</h2>
     <p class="modal-sub" id="resultsSub"></p>
     <ol class="standings" id="standings"></ol>
     <div class="modal-actions">
-      <button type="button" class="ghost-btn" id="btnCloseResults">닫기</button>
-      <button type="button" class="primary-btn" id="btnNewGame">새 게임</button>
+      <button type="button" class="ghost-btn" id="btnCloseResults" data-i18n="common.close">Close</button>
+      <button type="button" class="primary-btn" id="btnNewGame">New game</button>
     </div>
   </div>
 </div>
 
 <div class="table-chat" id="tableChat" hidden>
-  <button class="chat-toggle" type="button" id="chatToggle" aria-label="채팅">
-    <span class="chat-icon">채팅</span>
+  <button class="chat-toggle" type="button" id="chatToggle" aria-label="Chat" data-i18n-aria="chat.toggle">
+    <span class="chat-icon" data-i18n="chat.toggle">Chat</span>
     <span class="chat-badge" id="chatBadge" hidden>0</span>
   </button>
   <div class="chat-panel" id="chatPanel" hidden>
     <ul class="chat-list" id="gameChatList"></ul>
     <form class="chat-form" id="gameChatForm">
-      <input id="gameChatInput" maxlength="200" autocomplete="off" placeholder="메시지" />
-      <button class="ghost-btn tiny" type="submit">보내기</button>
+      <input id="gameChatInput" maxlength="200" autocomplete="off" placeholder="Message" data-i18n-placeholder="chat.placeholder" />
+      <button class="ghost-btn tiny" type="submit" data-i18n="menu.send">Send</button>
     </form>
   </div>
 </div>

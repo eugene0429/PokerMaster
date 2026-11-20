@@ -60,7 +60,7 @@ describe('opening a table from the main menu', () => {
 
     const second = room.join({ socketId: 's2', name: 'Second' });
     expect(() => room.startTable(second.id, { name: 'Second', seat: 3, bots: 5 }))
-      .toThrow(/이미 열린/);
+      .toThrow(/already open/);
     expect(room.isHost(first.id)).toBe(true);
   });
 
@@ -78,7 +78,7 @@ describe('opening a table from the main menu', () => {
     room.startTable(host.id, { name: 'Host', bots: 2, mode: 'tournament' });
     room.startedAt = Date.now() - 2 * 24 * 60 * 60 * 1000;   // dealt two days ago
     room.level = 9;
-    // Everyone leaves the table, but nobody presses 게임 끝내고 메인 메뉴로.
+    // Everyone leaves the table, but nobody presses "End game and return to menu".
     for (const bot of room.seatedPlayers().filter((p) => p.isBot)) room.kick(host.id, bot.seat);
     room.standUp(host.id);
     expect(room.seatedPlayers()).toHaveLength(0);
@@ -117,18 +117,18 @@ describe('dropping a bot into a chosen seat', () => {
 
   it('refuses a seat that is taken', () => {
     const { room, host } = opened();
-    expect(() => room.addBot(host.id, 0)).toThrow(/이미 누가 앉은/);
+    expect(() => room.addBot(host.id, 0)).toThrow(/already in that seat/);
   });
 
   it('refuses a seat that does not exist', () => {
     const { room, host } = opened();
-    expect(() => room.addBot(host.id, 99)).toThrow(/그런 자리가 없습니다/);
+    expect(() => room.addBot(host.id, 99)).toThrow(/no such seat/);
   });
 
   it('refuses anyone who is not the host', () => {
     const { room } = opened();
     const guest = room.join({ socketId: 's2', name: 'Guest' });
-    expect(() => room.addBot(guest.id, 4)).toThrow(/호스트만/);
+    expect(() => room.addBot(guest.id, 4)).toThrow(/Only the host/);
   });
 });
 
@@ -195,7 +195,7 @@ describe('before the host opens the table', () => {
     const room = makeRoom();
     const host = room.join({ socketId: 's1', name: 'Host' });
     const guest = room.join({ socketId: 's2', name: 'Guest' });
-    expect(() => room.sitDown(guest.id, 3)).toThrow(/호스트가 게임을 시작하면/);
+    expect(() => room.sitDown(guest.id, 3)).toThrow(/once the host starts/);
     expect(room.seatedPlayers()).toHaveLength(0);
 
     // The host's settings still go through, and the friend is dealt in with them.

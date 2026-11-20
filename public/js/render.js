@@ -5,16 +5,13 @@
 
 import { cardFaceSVG, cardBackSVG, cardKey } from './cards.js';
 import { chipStackEl, formatChips } from './chips.js';
+import { t } from './i18n.js';
 
 const LAYOUT = {
   landscape: { rx: 45, ry: 41, betR: 0.60 },
   portrait: { rx: 37, ry: 45, betR: 0.58 },
 };
 
-const STREET_LABEL = {
-  preflop: '프리플랍', flop: '플랍', turn: '턴', river: '리버',
-  showdown: '쇼다운', complete: '핸드 종료',
-};
 
 let refs = null;
 let onSit = () => {};
@@ -25,7 +22,7 @@ let onKick = () => {};
 const decor = {
   handId: null,
   street: null,
-  actions: new Map(),     // seat -> { text, kind }
+  actions: new Map(),     // seat -> { text, kind }, text worded at paint time
   winners: new Map(),     // seat -> amount
   winningKeys: new Map(), // seat -> Set of card keys
   handNames: new Map(),   // seat -> string
@@ -99,13 +96,12 @@ export function noteEvents(events) {
         decor.handNames.set(e.seat, e.name);
         break;
       case 'rebuy':
-        decor.actions.set(e.seat, {
-          text: e.remaining === null ? '리바인' : `리바인 · ${e.remaining}회 남음`,
-          kind: 'rebuy',
-        });
+        decor.actions.set(e.seat, tag('rebuy', () => (
+          e.remaining === null ? t('tag.rebuy') : t('tag.rebuyLeft', { n: e.remaining })
+        )));
         break;
       case 'knockOut':
-        decor.actions.set(e.seat, { text: '탈락', kind: 'out' });
+        decor.actions.set(e.seat, tag('out', () => t('tag.out')));
         break;
       case 'awardPot': {
         decor.winners.set(e.seat, (decor.winners.get(e.seat) ?? 0) + e.amount);
@@ -121,13 +117,18 @@ export function noteEvents(events) {
   }
 }
 
+/** A seat tag whose words are looked up when painted, so a language switch rewords it. */
+function tag(kind, say) {
+  return { kind, get text() { return say(); } };
+}
+
 function actionTag(e) {
-  if (e.action === 'fold') return { text: '폴드', kind: 'fold' };
-  if (e.action === 'check') return { text: '체크', kind: 'check' };
-  if (e.allIn) return { text: '올인', kind: 'allin' };
-  if (e.action === 'call') return { text: `콜 ${formatChips(e.amount)}`, kind: 'call' };
-  const verb = e.isBet ? '벳' : '레이즈';
-  return { text: `${verb} ${formatChips(e.amount)}`, kind: 'raise' };
+  if (e.action === 'fold') return tag('fold', () => t('tag.fold'));
+  if (e.action === 'check') return tag('check', () => t('tag.check'));
+  if (e.allIn) return tag('allin', () => t('tag.allIn'));
+  const amount = formatChips(e.amount);
+  if (e.action === 'call') return tag('call', () => t('tag.call', { amount }));
+  return tag('raise', () => t(e.isBet ? 'tag.bet' : 'tag.raise', { amount }));
 }
 
 /* ----------------------------- painting ---------------------------- */
@@ -223,7 +224,7 @@ function renderEmptySeat(el, seat, snapshot) {
   const canBot = !canSit && !!snapshot.you?.isHost;
 
   btn.dataset.act = canSit ? 'sit' : canBot ? 'bot' : '';
-  btn.textContent = canSit ? '여기 앉기' : canBot ? '+ 봇 추가' : '빈 자리';
+  btn.textContent = canSit ? t('seat.sitHere') : canBot ? t('seat.addBot') : t('seat.empty');
   btn.classList.toggle('bot-slot', canBot);
   btn.disabled = !canSit && !canBot;
 }
@@ -243,7 +244,6 @@ function renderOccupiedSeat(el, data, snapshot, tableRect, pos, reveal) {
     kick.className = 'kick-seat';
     kick.type = 'button';
     kick.textContent = '×';
-    kick.title = '이 자리 비우기';
     kick.addEventListener('click', () => onKick(data.seat));
     el.appendChild(kick);
   }
@@ -267,6 +267,7 @@ function renderOccupiedSeat(el, data, snapshot, tableRect, pos, reveal) {
 
   // The host can clear any seat — a bot, or a friend who stopped answering.
   const kick = el.querySelector('.kick-seat');
+  kick.title = t('seat.kick');
   kick.classList.toggle('available', !!snapshot.you?.isHost && !data.isMe);
 
   // Face-up cards wait their turn at showdown, even though the server already
@@ -281,9 +282,9 @@ function renderOccupiedSeat(el, data, snapshot, tableRect, pos, reveal) {
 }
 
 function seatState(data) {
-  if (!data.connected) return '연결 끊김';
-  if (data.sittingOut) return '자리 비움';
-  if (data.waiting) return '다음 핸드 대기';
+  if (!data.connected) return t('seat.disconnected');
+  if (data.sittingOut) return t('seat.sittingOut');
+  if (data.waiting) return t('seat.waiting');
   return '';
 }
 
@@ -471,22 +472,23 @@ function paintStatus(snapshot, reveal) {
 }
 
 function statusText(snapshot, reveal) {
-  if (snapshot.phase === 'countdown') return '곧 시작합니다…';
+  if (snapshot.phase === 'countdown') return t('dock.countdown');
   if (snapshot.phase === 'idle') {
     const seated = snapshot.seats.filter(Boolean).length;
-    return seated < 2 ? '플레이어를 기다리는 중 — 친구를 부르거나 봇을 추가하세요' : '대기 중';
+    return seated < 2 ? t('status.waitingPlayers') : t('status.waiting');
   }
   if (snapshot.hand?.complete) {
     if (!reveal.settled) {
-      return snapshot.hand.results?.showdown ? '쇼다운' : '핸드 종료';
+      return snapshot.hand.results?.showdown ? t('street.showdown') : t('street.complete');
     }
     const names = [...decor.winners.keys()]
       .map((s) => snapshot.seats[s]?.name)
       .filter(Boolean);
-    if (names.length) return `${names.join(', ')} 승리`;
-    return '핸드 종료';
+    if (names.length) return t('status.wins', { names: names.join(', ') });
+    return t('street.complete');
   }
-  return STREET_LABEL[snapshot.hand?.street] ?? '';
+  const street = snapshot.hand?.street;
+  return street ? t(`street.${street}`) : '';
 }
 
 function paintTimer(snapshot) {

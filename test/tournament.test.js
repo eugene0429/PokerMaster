@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { Room } from '../server/room.js';
+import { Room, FINISH } from '../server/room.js';
 import {
   blindsForLevel, levelForElapsed, maxLevelFor, STRUCTURES, MODE,
 } from '../server/blinds.js';
@@ -207,7 +207,7 @@ describe('knocking players out', () => {
     host.stack = 2500;
     bots[2].stack = 1500;
 
-    room.finish('최후의 1인');
+    room.finish(FINISH.LAST_STANDING);
     expect(room.results.standings.map((s) => s.name)).toEqual([
       host.name, bots[2].name, bots[1].name, bots[0].name,
     ]);
@@ -242,7 +242,7 @@ describe('leaving a tournament early', () => {
     room.standUp(guest.id);
     expect(room.eliminated.map((p) => p.name)).toContain('Guest');
 
-    room.finish('최후의 1인');
+    room.finish(FINISH.LAST_STANDING);
     expect(room.results.standings.map((s) => s.name)).toContain('Guest');
     expect(room.results.standings).toHaveLength(4);
   });
@@ -286,7 +286,7 @@ describe('a tournament played to the end', () => {
     vi.advanceTimersByTime(60 * MINUTE);
 
     expect(room.phase).toBe('finished');
-    expect(room.results.reason).toBe('최후의 1인');
+    expect(room.results.reason).toBe(FINISH.LAST_STANDING);
     expect(room.results.standings).toHaveLength(4);
     expect(room.results.standings.map((s) => s.place)).toEqual([1, 2, 3, 4]);
     expect(room.results.standings[0].stack).toBe(chips);   // the winner has them all
@@ -325,7 +325,7 @@ describe('a tournament played to the end', () => {
     vi.advanceTimersByTime(30 * MINUTE);
 
     expect(room.phase).toBe('finished');
-    expect(room.results.reason).toBe('시간 종료');
+    expect(room.results.reason).toBe(FINISH.TIME_UP);
     const stacks = room.results.standings.map((s) => s.stack);
     expect([...stacks].sort((a, b) => b - a)).toEqual(stacks);   // ranked by chips
   });
@@ -390,14 +390,14 @@ describe('clearing a seat', () => {
 
   it('refuses to let the host kick themselves', () => {
     const { room, host } = opened();
-    expect(() => room.kick(host.id, 0)).toThrow(/일어서기/);
+    expect(() => room.kick(host.id, 0)).toThrow(/Stand up/);
   });
 
   it('refuses anyone who is not the host', () => {
     const { room, host } = opened();
     room.addBot(host.id, 2);
     const guest = room.join({ socketId: 's2', name: 'Guest' });
-    expect(() => room.kick(guest.id, 2)).toThrow(/호스트만/);
+    expect(() => room.kick(guest.id, 2)).toThrow(/Only the host/);
   });
 });
 
@@ -551,7 +551,7 @@ describe('rebuys', () => {
     bot.stack = 0;
     room.handleBustedPlayers();
     expect(room.checkForGameOver()).toBe(true);   // decided before the seat clears
-    expect(room.results.reason).toBe('최후의 1인');
+    expect(room.results.reason).toBe(FINISH.LAST_STANDING);
   });
 
   it('records how many rebuys each player used in the standings', () => {
@@ -563,7 +563,7 @@ describe('rebuys', () => {
     settleAndDeal(room);               // and is out
     host.stack = 3000;
 
-    room.finish('최후의 1인');
+    room.finish(FINISH.LAST_STANDING);
     const byName = Object.fromEntries(room.results.standings.map((r) => [r.name, r.rebuysUsed]));
     expect(byName[bot.name]).toBe(1);
     expect(byName[host.name]).toBe(0);

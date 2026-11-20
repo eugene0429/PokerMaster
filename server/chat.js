@@ -16,22 +16,29 @@ export class ChatLog {
     this.seq = 0;
   }
 
-  /** @returns {{ok: true, message: object} | {ok: false, reason: string}} */
+  /** @returns {{ok: true, message: object} | {ok: false, reason: string, code: string}} */
   post(player, rawText, now = Date.now()) {
     const text = clean(rawText);
-    if (!text) return { ok: false, reason: '빈 메시지는 보낼 수 없습니다' };
+    if (!text) return { ok: false, reason: 'Cannot send an empty message', code: 'chatEmpty' };
 
     const last = this.lastPostAt.get(player.id) ?? 0;
-    if (now - last < MIN_INTERVAL_MS) return { ok: false, reason: '조금 천천히 보내주세요' };
+    if (now - last < MIN_INTERVAL_MS) return { ok: false, reason: 'Slow down a little', code: 'chatTooFast' };
     this.lastPostAt.set(player.id, now);
 
     return { ok: true, message: this.append({ name: player.name, text, at: now, system: false }) };
   }
 
-  system(text, now = Date.now()) {
+  /**
+   * A notice from the table. `text` is the English fallback; `key` and
+   * `params` let each client word it in the viewer's own language.
+   */
+  system(text, { key = null, params = null } = {}, now = Date.now()) {
     const body = clean(text);
     if (!body) return null;
-    return this.append({ name: null, text: body, at: now, system: true });
+    const entry = { name: null, text: body, at: now, system: true };
+    if (key) entry.key = key;
+    if (params) entry.params = params;
+    return this.append(entry);
   }
 
   append(message) {
